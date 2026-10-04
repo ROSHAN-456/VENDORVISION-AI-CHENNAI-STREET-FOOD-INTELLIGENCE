@@ -413,13 +413,16 @@ export default function AdminApp({ onLogout, user }) {
                                                             <td colSpan="5" className="p-6">
                                                                 <h4 className="font-bold text-sm mb-3">User Activity History</h4>
                                                                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                                                                    {data.activity_feed.filter(a => a.detail?.includes(u.email) || Math.random() < 0.1).slice(0, 5).map((a, j) => (
-                                                                        <div key={j} className="text-xs bg-white p-2 rounded border border-slate-100 flex justify-between">
-                                                                            <span><span className="font-bold">{a.stall_id}</span> - {a.event_type}</span>
-                                                                            <span className="text-slate-400">{new Date(a.timestamp).toLocaleString()}</span>
-                                                                        </div>
-                                                                    ))}
-                                                                    <p className="text-xs text-slate-400 mt-2">Displaying sampled activity correlating to this user profile.</p>
+                                                                    {(() => {
+                                                                        const filtered = data.activity_feed.filter(a => a.detail?.includes(u.email));
+                                                                        if (filtered.length === 0) return <p className="text-xs text-slate-400 mt-2">No activity yet</p>;
+                                                                        return filtered.slice(0, 5).map((a, j) => (
+                                                                            <div key={j} className="text-xs bg-white p-2 rounded border border-slate-100 flex justify-between">
+                                                                                <span><span className="font-bold">{a.stall_id}</span> - {a.event_type}</span>
+                                                                                <span className="text-slate-400">{new Date(a.timestamp).toLocaleString()}</span>
+                                                                            </div>
+                                                                        ));
+                                                                    })()}
                                                                 </div>
                                                             </td>
                                                         </tr>

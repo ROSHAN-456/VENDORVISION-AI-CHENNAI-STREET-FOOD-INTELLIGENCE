@@ -48,16 +48,26 @@ export default function VendorApp({ onLogout, user }) {
                 const forecastArr = [];
                 for (let i = 0; i < 6; i++) {
                     const fHour = (now.getHours() + i) % 24;
+                    let fDay = now.getDay();
+                    if (now.getHours() + i >= 24) {
+                        fDay = (fDay + Math.floor((now.getHours() + i) / 24)) % 7;
+                    }
                     try {
-                        const fRes = await fetch(`${API_BASE}/predict?stall_id=${myStall.id}&hour=${fHour}&day_of_week=${now.getDay()}&weather=${wData.condition}`);
+                        const fRes = await fetch(`${API_BASE}/predict?stall_id=${myStall.id}&hour=${fHour}&day_of_week=${fDay}&weather=${wData.condition}`);
                         if (fRes.ok) {
                             const fData = await fRes.json();
                             const h12 = fHour % 12 === 0 ? 12 : fHour % 12;
                             const ampm = fHour >= 12 ? 'PM' : 'AM';
+                            
+                            const isActual = fData.source === 'crowd_votes';
+                            const expWait = isActual ? 
+                                (fData.model_crowd_level === 'High' ? 16 : fData.model_crowd_level === 'Medium' ? 8 : 2) : 
+                                fData.wait_minutes;
+
                             forecastArr.push({
                                 time: `${h12} ${ampm}`,
-                                act: i < 2 ? Math.max(0, fData.wait_minutes - Math.floor(Math.random() * 3)) : null,
-                                exp: fData.wait_minutes
+                                act: isActual ? fData.wait_minutes : null,
+                                exp: expWait
                             });
                         }
                     } catch (e) { }
