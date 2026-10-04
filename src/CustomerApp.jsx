@@ -185,6 +185,8 @@ export default function CustomerApp({ onLogout, user }) {
                             const p = await pRes.json();
                             base.liveWait = p.wait_minutes;
                             base.liveCrowd = p.crowd_level;
+                            base.source = p.source;
+                            base.voteCount = p.vote_count;
                         }
                     } catch (e) { }
                     // compute distance from user
@@ -224,6 +226,8 @@ export default function CustomerApp({ onLogout, user }) {
                 const pData = await pRes.json();
                 currentCrowd = pData.crowd_level;
                 currentWait = pData.wait_minutes;
+                stall.source = pData.source;
+                stall.voteCount = pData.vote_count;
             }
 
             // Generate Synthetic Forecast
@@ -266,9 +270,14 @@ export default function CustomerApp({ onLogout, user }) {
                 })
             });
         } catch (e) { console.error(e); }
+        const checkedStall = checkInStall;
         setCheckInStall(null);
         setToast('Thanks for your report! You are helping others.');
         setTimeout(() => setToast(''), 3000);
+        
+        if (selectedStall && checkedStall.id === selectedStall.id) {
+            onSelectStall(checkedStall);
+        }
     };
 
     const filteredStalls = stalls.filter(s =>
@@ -383,6 +392,11 @@ export default function CustomerApp({ onLogout, user }) {
                                                 {loadingPrediction && <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-xl z-10"><div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>}
                                                 <div className="text-[11px] text-slate-500 mb-2 font-bold uppercase tracking-widest">Current Crowd</div>
                                                 <CrowdBadge level={selectedStall.liveCrowd} />
+                                                {selectedStall.source === 'crowd_votes' ? (
+                                                    <div className="text-[10px] text-blue-600 mt-2 font-bold bg-blue-50 px-2 py-1 rounded inline-block">Based on {selectedStall.voteCount} live reports</div>
+                                                ) : (
+                                                    <div className="text-[10px] text-slate-400 mt-2 font-semibold">AI forecast</div>
+                                                )}
                                             </div>
                                             <div className="flex-1 bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
                                                 {loadingPrediction && <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-xl z-10"><div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>}

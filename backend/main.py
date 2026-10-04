@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import csv
 import sqlite3
@@ -187,21 +187,60 @@ def predict(
 ):
     footfall, crowd_level, wait_minutes = predict_crowd(stall_id, hour, day_of_week, weather)
     
-    # Log /predict action
+    source = "model"
+    votes = {"Low": 0, "Medium": 0, "High": 0}
+    vote_count = 0
+    model_crowd = crowd_level
+
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
+        
+        window = int(os.getenv("CHECKIN_WINDOW_MINUTES", 30))
+        min_votes = int(os.getenv("MIN_VOTES", 3))
+        cutoff = (datetime.now() - timedelta(minutes=window)).isoformat()
+        
+        c.execute("SELECT reported_crowd_level, COUNT(*) FROM checkins WHERE stall_id = ? AND timestamp >= ? GROUP BY reported_crowd_level", (stall_id, cutoff))
+        rows = c.fetchall()
+        
         c.execute("INSERT INTO vendor_actions (stall_id, action_type, timestamp) VALUES (?, ?, ?)", 
                   (stall_id, "predict", datetime.now().isoformat()))
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+        
+        for lvl, count in rows:
+            if lvl in votes:
+                votes[lvl] = count
+                vote_count += count
+        
+        # Only let check-in votes override the model for the CURRENT hour/day.
+        # Forecast queries (future hours) always get the pure model prediction.
+        now = datetime.now()
+        is_current_slot = (hour == now.hour and day_of_week == now.weekday())
+                
+        if is_current_slot and vote_count >= min_votes:
+            max_votes = max(votes.values())
+            winners = [k for k, v in votes.items() if v == max_votes]
+            if len(winners) == 1:
+                source = "crowd_votes"
+                crowd_level = winners[0]
+                if crowd_level == "Low":
+                    wait_minutes = 2.0
+                elif crowd_level == "Medium":
+                    wait_minutes = 8.0
+                elif crowd_level == "High":
+                    wait_minutes = 16.0
+    except Exception as e:
+        print("predict vote error:", e)
         
     return {
         "footfall":     round(footfall, 1),
         "crowd_level":  crowd_level,
         "wait_minutes": wait_minutes,
+        "source":       source,
+        "votes":        votes,
+        "vote_count":   vote_count,
+        "model_crowd_level": model_crowd,
     }
 
 
