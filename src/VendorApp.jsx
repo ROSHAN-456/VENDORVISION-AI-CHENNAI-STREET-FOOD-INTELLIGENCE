@@ -40,7 +40,7 @@ export default function VendorApp({ onLogout, user }) {
     const [forecastData, setForecastData] = useState([]);
     const [forecastLoading, setForecastLoading] = useState(false);
     const [forecastError, setForecastError] = useState(null);
-    const [weatherData, setWeatherData] = useState({ condition: "Clear" });
+    const [weatherData, setWeatherData] = useState({ weather: "Clear" });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -57,8 +57,10 @@ export default function VendorApp({ onLogout, user }) {
                 if (now.getHours() + i >= 24) {
                     fDay = (fDay + Math.floor((now.getHours() + i) / 24)) % 7;
                 }
-                const fRes = await fetch(`${API_BASE}/predict?stall_id=${stall.id}&hour=${fHour}&day_of_week=${fDay}&weather=${weather.condition}`);
-                if (!fRes.ok) throw new Error("Forecast API Error");
+                const url = `${API_BASE}/predict?stall_id=${stall.id}&hour=${fHour}&day_of_week=${fDay}&weather=${weather.weather}`;
+                const fRes = await fetch(url);
+                console.log("Forecast request:", url, "Status:", fRes.status);
+                if (!fRes.ok) throw new Error(`HTTP ${fRes.status} for ${fHour}:00`);
                 const fData = await fRes.json();
                 
                 const h12 = fHour % 12 === 0 ? 12 : fHour % 12;
@@ -95,11 +97,11 @@ export default function VendorApp({ onLogout, user }) {
                 const myStall = { ...mockMatch, ...apiStall };
 
                 const wRes = await fetch(`${API_BASE}/weather?lat=${myStall.lat}&lon=${myStall.lon}`);
-                const wData = wRes.ok ? await wRes.json() : { condition: "Clear" };
+                const wData = wRes.ok ? await wRes.json() : { weather: "Clear" };
                 setWeatherData(wData);
 
                 const now = new Date();
-                const pRes = await fetch(`${API_BASE}/predict?stall_id=${myStall.id}&hour=${now.getHours()}&day_of_week=${now.getDay()}&weather=${wData.condition}`);
+                const pRes = await fetch(`${API_BASE}/predict?stall_id=${myStall.id}&hour=${now.getHours()}&day_of_week=${now.getDay()}&weather=${wData.weather}`);
                 if (pRes.ok) {
                     const pData = await pRes.json();
                     myStall.liveCrowd = pData.crowd_level;
