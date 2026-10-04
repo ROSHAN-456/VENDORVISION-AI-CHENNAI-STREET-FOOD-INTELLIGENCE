@@ -11,3 +11,4 @@ dist/
 __pycache__/
 backend/vendorvision.db
 backend/.env 
+backend/.env 
