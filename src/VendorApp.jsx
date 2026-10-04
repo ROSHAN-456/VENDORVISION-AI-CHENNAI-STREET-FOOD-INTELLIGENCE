@@ -1,4 +1,26 @@
 import React, { useState, useEffect } from 'react';
+
+class VendorErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="p-8 text-center bg-red-50 rounded-2xl border border-red-200 animate-fadeUp mt-8 max-w-2xl mx-auto">
+                    <h2 className="text-2xl font-bold text-red-700 mb-2">Something went wrong</h2>
+                    <p className="text-red-600 mb-4">{this.state.error?.message || "Unknown rendering error"}</p>
+                    <button onClick={() => window.location.reload()} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold">Reload Dashboard</button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
 import { Store, TrendingUp, CloudRain, Bell, History, Target, Zap, Clock, Users, Mail, Settings, AlignLeft, User } from 'lucide-react';
 import { Card, CrowdBadge, WaitBadge, Button, Badge, MOCK_STALLS } from './SharedComponents';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
@@ -15,11 +37,51 @@ const FORECAST_DATA = [
 export default function VendorApp({ onLogout, user }) {
     const [activeTab, setActiveTab] = useState('home');
     const [vendorStall, setVendorStall] = useState(null);
-    const [forecastData, setForecastData] = useState(FORECAST_DATA);
+    const [forecastData, setForecastData] = useState([]);
+    const [forecastLoading, setForecastLoading] = useState(false);
+    const [forecastError, setForecastError] = useState(null);
+    const [weatherData, setWeatherData] = useState({ condition: "Clear" });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+
+    const fetchForecast = async (stall, weather) => {
+        setForecastLoading(true);
+        setForecastError(null);
+        try {
+            const now = new Date();
+            const promises = Array.from({ length: 6 }).map(async (_, i) => {
+                const fHour = (now.getHours() + i) % 24;
+                let fDay = now.getDay();
+                if (now.getHours() + i >= 24) {
+                    fDay = (fDay + Math.floor((now.getHours() + i) / 24)) % 7;
+                }
+                const fRes = await fetch(`${API_BASE}/predict?stall_id=${stall.id}&hour=${fHour}&day_of_week=${fDay}&weather=${weather.condition}`);
+                if (!fRes.ok) throw new Error("Forecast API Error");
+                const fData = await fRes.json();
+                
+                const h12 = fHour % 12 === 0 ? 12 : fHour % 12;
+                const ampm = fHour >= 12 ? 'PM' : 'AM';
+                const isActual = fData.source === 'crowd_votes';
+                const expWait = isActual ? 
+                    (fData.model_crowd_level === 'High' ? 16 : fData.model_crowd_level === 'Medium' ? 8 : 2) : 
+                    fData.wait_minutes;
+                
+                return {
+                    time: `${h12} ${ampm}`,
+                    act: isActual ? fData.wait_minutes : null,
+                    exp: expWait
+                };
+            });
+            const forecastArr = await Promise.all(promises);
+            setForecastData(forecastArr);
+        } catch (err) {
+            setForecastError(err.message || "Failed to load forecast data");
+        } finally {
+            setForecastLoading(false);
+        }
+    };
 
     useEffect(() => {
         const fetchVendorData = async () => {
@@ -34,9 +96,9 @@ export default function VendorApp({ onLogout, user }) {
 
                 const wRes = await fetch(`${API_BASE}/weather?lat=${myStall.lat}&lon=${myStall.lon}`);
                 const wData = wRes.ok ? await wRes.json() : { condition: "Clear" };
-                const now = new Date();
+                setWeatherData(wData);
 
-                // Fetch current prediction
+                const now = new Date();
                 const pRes = await fetch(`${API_BASE}/predict?stall_id=${myStall.id}&hour=${now.getHours()}&day_of_week=${now.getDay()}&weather=${wData.condition}`);
                 if (pRes.ok) {
                     const pData = await pRes.json();
@@ -44,49 +106,56 @@ export default function VendorApp({ onLogout, user }) {
                     myStall.liveWait = pData.wait_minutes;
                 }
 
-                // Fetch 6-hour forecast by calling /predict for each upcoming hour
-                const forecastArr = [];
-                for (let i = 0; i < 6; i++) {
-                    const fHour = (now.getHours() + i) % 24;
-                    let fDay = now.getDay();
-                    if (now.getHours() + i >= 24) {
-                        fDay = (fDay + Math.floor((now.getHours() + i) / 24)) % 7;
-                    }
-                    try {
-                        const fRes = await fetch(`${API_BASE}/predict?stall_id=${myStall.id}&hour=${fHour}&day_of_week=${fDay}&weather=${wData.condition}`);
-                        if (fRes.ok) {
-                            const fData = await fRes.json();
-                            const h12 = fHour % 12 === 0 ? 12 : fHour % 12;
-                            const ampm = fHour >= 12 ? 'PM' : 'AM';
-                            
-                            const isActual = fData.source === 'crowd_votes';
-                            const expWait = isActual ? 
-                                (fData.model_crowd_level === 'High' ? 16 : fData.model_crowd_level === 'Medium' ? 8 : 2) : 
-                                fData.wait_minutes;
-
-                            forecastArr.push({
-                                time: `${h12} ${ampm}`,
-                                act: isActual ? fData.wait_minutes : null,
-                                exp: expWait
-                            });
-                        }
-                    } catch (e) { }
-                }
-                if (forecastArr.length > 0) {
-                    setForecastData(forecastArr);
-                }
                 setVendorStall(myStall);
                 setError(null);
+                
+                fetchForecast(myStall, wData);
             } catch (err) {
                 console.error(err);
                 setVendorStall(MOCK_STALLS[0]);
                 setError("Failed to fetch real data. Showing offline mock.");
+                setForecastLoading(false);
             } finally {
                 setLoading(false);
             }
         };
         fetchVendorData();
     }, []);
+
+    const renderChart = () => (
+        <Card>
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-slate-800">Demand Forecast (Today)</h3>
+                <Badge className="bg-slate-100 text-slate-600 border border-slate-200">Live Update</Badge>
+            </div>
+            <div className="h-64 relative flex flex-col justify-center items-center">
+                {forecastLoading ? (
+                    <div className="flex items-center justify-center flex-col gap-3 h-full">
+                        <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="text-sm text-slate-500 font-bold">Loading forecast data...</div>
+                    </div>
+                ) : forecastError ? (
+                    <div className="flex items-center justify-center flex-col gap-3 bg-red-50 p-6 rounded-xl border border-red-200 w-full h-full">
+                        <div className="text-red-600 font-bold text-center">Failed to load forecast data.<br/>{forecastError}</div>
+                        <button onClick={() => fetchForecast(vendorStall, weatherData)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold">Retry</button>
+                    </div>
+                ) : forecastData?.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={forecastData}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} dy={10} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} />
+                            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                            <Line type="monotone" dataKey="act" name="Actual Crowd" stroke="#0f172a" strokeWidth={3} dot={{ r: 4 }} />
+                            <Line type="monotone" dataKey="exp" name="AI Expected" stroke="#2E7A6A" strokeWidth={3} strokeDasharray="5 5" />
+                        </LineChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="text-slate-500 font-medium">No forecast data available</div>
+                )}
+            </div>
+        </Card>
+    );
 
     const renderContent = () => {
         switch (activeTab) {
@@ -126,24 +195,7 @@ export default function VendorApp({ onLogout, user }) {
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <Card>
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="font-bold text-slate-800">Demand Forecast (Today)</h3>
-                                    <Badge className="bg-slate-100 text-slate-600 border border-slate-200">Live Update</Badge>
-                                </div>
-                                <div className="h-64">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={forecastData}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                            <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} dy={10} />
-                                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} />
-                                            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                                            <Line type="monotone" dataKey="act" name="Actual Crowd" stroke="#0f172a" strokeWidth={3} dot={{ r: 4 }} />
-                                            <Line type="monotone" dataKey="exp" name="AI Expected" stroke="#2E7A6A" strokeWidth={3} strokeDasharray="5 5" />
-                                        </LineChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </Card>
+                            {renderChart()}
 
                             <div className="space-y-6">
                                 <Card>
@@ -168,6 +220,13 @@ export default function VendorApp({ onLogout, user }) {
                                 </Card>
                             </div>
                         </div>
+                    </div>
+                );
+
+            case 'forecast':
+                return (
+                    <div className="space-y-6 animate-fadeUp relative">
+                        {renderChart()}
                     </div>
                 );
 
@@ -307,7 +366,7 @@ export default function VendorApp({ onLogout, user }) {
                 </header>
 
                 <div className="max-w-6xl mx-auto">
-                    {renderContent()}
+                    <VendorErrorBoundary>{renderContent()}</VendorErrorBoundary>
                 </div>
             </main>
         </div>
