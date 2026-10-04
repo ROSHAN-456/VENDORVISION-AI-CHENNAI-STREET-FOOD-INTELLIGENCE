@@ -254,6 +254,24 @@ def stalls():
     )
     return deduped.to_dict(orient="records")
 
+@app.get("/stalls/{stall_id}/checkin-summary")
+def stall_checkin_summary(stall_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    c.execute("SELECT reported_crowd_level, COUNT(*) FROM checkins WHERE stall_id = ? AND timestamp >= ? GROUP BY reported_crowd_level", (stall_id, today_start))
+    rows = c.fetchall()
+    conn.close()
+    
+    votes = {"Low": 0, "Medium": 0, "High": 0}
+    total = 0
+    for lvl, count in rows:
+        if lvl in votes:
+            votes[lvl] = count
+            total += count
+            
+    return {"total": total, "counts": votes}
+
 
 class CheckInRequest(BaseModel):
     stall_id: str

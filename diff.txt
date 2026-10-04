@@ -1,0 +1,119 @@
+diff --git a/backend/main.py b/backend/main.py
+index ef7ea3f..501749b 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
+ from pydantic import BaseModel
+ import smtplib
+ from email.mime.text import MIMEText
+-from datetime import datetime
++from datetime import datetime, timedelta
+ from dotenv import load_dotenv
+ import csv
+ import sqlite3
+@@ -187,14 +187,44 @@ def predict(
+ ):
+     footfall, crowd_level, wait_minutes = predict_crowd(stall_id, hour, day_of_week, weather)
+     
+-    # Log /predict action
++    source = "model"
++    votes = {"Low": 0, "Medium": 0, "High": 0}
++    vote_count = 0
++    model_crowd = crowd_level
++
+     try:
+         conn = sqlite3.connect(DB_PATH)
+         c = conn.cursor()
++        
++        window = int(os.getenv("CHECKIN_WINDOW_MINUTES", 30))
++        min_votes = int(os.getenv("MIN_VOTES", 3))
++        cutoff = (datetime.now() - timedelta(minutes=window)).isoformat()
++        
++        c.execute("SELECT reported_crowd_level, COUNT(*) FROM checkins WHERE stall_id = ? AND timestamp >= ? GROUP BY reported_crowd_level", (stall_id, cutoff))
++        rows = c.fetchall()
++        
+         c.execute("INSERT INTO vendor_actions (stall_id, action_type, timestamp) VALUES (?, ?, ?)", 
+                   (stall_id, "predict", datetime.now().isoformat()))
+         conn.commit()
+         conn.close()
++        
++        for lvl, count in rows:
++            if lvl in votes:
++                votes[lvl] = count
++                vote_count += count
++                
++        if vote_count >= min_votes:
++            max_votes = max(votes.values())
++            winners = [k for k, v in votes.items() if v == max_votes]
++            if len(winners) == 1:
++                source = "crowd_votes"
++                crowd_level = winners[0]
++                if crowd_level == "Low":
++                    wait_minutes = 2.0
++                elif crowd_level == "Medium":
++                    wait_minutes = 8.0
++                elif crowd_level == "High":
++                    wait_minutes = 16.0
+     except Exception:
+         pass
+         
+@@ -202,6 +232,10 @@ def predict(
+         "footfall":     round(footfall, 1),
+         "crowd_level":  crowd_level,
+         "wait_minutes": wait_minutes,
++        "source":       source,
++        "votes":        votes,
++        "vote_count":   vote_count,
++        "model_crowd_level": model_crowd,
+     }
+ 
+ 
+diff --git a/src/CustomerApp.jsx b/src/CustomerApp.jsx
+index 0537ce6..d895368 100644
+--- a/src/CustomerApp.jsx
++++ b/src/CustomerApp.jsx
+@@ -185,6 +185,8 @@ export default function CustomerApp({ onLogout, user }) {
+                             const p = await pRes.json();
+                             base.liveWait = p.wait_minutes;
+                             base.liveCrowd = p.crowd_level;
++                            base.source = p.source;
++                            base.voteCount = p.vote_count;
+                         }
+                     } catch (e) { }
+                     // compute distance from user
+@@ -224,6 +226,8 @@ export default function CustomerApp({ onLogout, user }) {
+                 const pData = await pRes.json();
+                 currentCrowd = pData.crowd_level;
+                 currentWait = pData.wait_minutes;
++                stall.source = pData.source;
++                stall.voteCount = pData.vote_count;
+             }
+ 
+             // Generate Synthetic Forecast
+@@ -266,9 +270,14 @@ export default function CustomerApp({ onLogout, user }) {
+                 })
+             });
+         } catch (e) { console.error(e); }
++        const checkedStall = checkInStall;
+         setCheckInStall(null);
+         setToast('Thanks for your report! You are helping others.');
+         setTimeout(() => setToast(''), 3000);
++        
++        if (selectedStall && checkedStall.id === selectedStall.id) {
++            onSelectStall(checkedStall);
++        }
+     };
+ 
+     const filteredStalls = stalls.filter(s =>
+@@ -383,6 +392,11 @@ export default function CustomerApp({ onLogout, user }) {
+                                                 {loadingPrediction && <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-xl z-10"><div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>}
+                                                 <div className="text-[11px] text-slate-500 mb-2 font-bold uppercase tracking-widest">Current Crowd</div>
+                                                 <CrowdBadge level={selectedStall.liveCrowd} />
++                                                {selectedStall.source === 'crowd_votes' ? (
++                                                    <div className="text-[10px] text-blue-600 mt-2 font-bold bg-blue-50 px-2 py-1 rounded inline-block">Based on {selectedStall.voteCount} live reports</div>
++                                                ) : (
++                                                    <div className="text-[10px] text-slate-400 mt-2 font-semibold">AI forecast</div>
++                                                )}
+                                             </div>
+                                             <div className="flex-1 bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
+                                                 {loadingPrediction && <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-xl z-10"><div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>}
