@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: vendorvision-backend
+    env: docker
+    # Using root as the build context allows Docker to copy the adjoining /Source folder
+    dockerfilePath: backend/Dockerfile
+    envVars:
+      - key: EMAIL_SENDER
+        sync: false
+      - key: EMAIL_APP_PASSWORD
+        sync: false
+      - key: OPENWEATHER_API_KEY
+        sync: false
+      - key: VENDOR_EMAIL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
