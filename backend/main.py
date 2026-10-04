@@ -19,7 +19,8 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import smtplib
@@ -93,7 +94,7 @@ DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
 def create_access_token(user_id: int, email: str, role: str) -> str:
     """Issue an HS256 JWT with 12-hour expiry."""
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "email": email,
         "role": role,
         "iat": datetime.utcnow(),
@@ -101,6 +102,28 @@ def create_access_token(user_id: int, email: str, role: str) -> str:
     }
     return jwt.encode(payload, APP_SECRET, algorithm="HS256")
 
+security = HTTPBearer(auto_error=False)
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, APP_SECRET, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+def require_role(*roles):
+    def role_checker(user: dict = Depends(get_current_user)):
+        if user.get("role") not in roles:
+            raise HTTPException(status_code=403, detail="Insufficient role")
+        return user
+    return role_checker
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -506,11 +529,11 @@ def get_weather(lat: float, lon: float):
 
 
 @app.post("/checkin")
-def checkin(data: CheckInRequest):
+def checkin(data: CheckInRequest, user: dict = Depends(get_current_user)):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT INTO checkins (stall_id, reported_crowd_level, timestamp) VALUES (?, ?, ?)", 
-              (data.stall_id, data.reported_crowd_level, data.timestamp))
+    c.execute("INSERT INTO checkins (stall_id, reported_crowd_level, timestamp, user_id) VALUES (?, ?, ?, ?)", 
+              (data.stall_id, data.reported_crowd_level, data.timestamp, user.get("sub")))
     conn.commit()
     conn.close()
     return {"status": "ok"}
@@ -567,7 +590,7 @@ def send_vendor_notification(stall_id: str, vendor_email: str):
         raise Exception(f"Failed to send email: {e}")
 
 @app.post("/notify-vendor")
-def notify_vendor(req: NotifyRequest):
+def notify_vendor(req: NotifyRequest, user: dict = Depends(require_role("admin"))):
     vendor_email = None
     if VENDORS_CSV.exists():
         with open(VENDORS_CSV, mode="r", encoding="utf-8") as f:
@@ -594,12 +617,12 @@ def notify_vendor(req: NotifyRequest):
     return {"status": "sent"}
 
 @app.post("/notify-all")
-def notify_all():
+def notify_all(user: dict = Depends(require_role("admin"))):
     results = notify_all_vendors_job()
     return {"status": "success", "results": results}
 
 @app.get("/admin/activity")
-def admin_activity():
+def admin_activity(user: dict = Depends(require_role("admin"))):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -620,7 +643,7 @@ def admin_activity():
     return [dict(r) for r in rows]
 
 @app.get("/admin/users")
-def admin_users():
+def admin_users(user: dict = Depends(require_role("admin"))):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -630,7 +653,7 @@ def admin_users():
     return [dict(r) for r in rows]
     
 @app.get("/admin/everything")
-def admin_everything():
+def admin_everything(user: dict = Depends(require_role("admin"))):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
