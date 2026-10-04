@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Store, TrendingUp, CloudRain, Bell, History, Target, Zap, Clock, Users, Mail, Settings, AlignLeft, User, X } from 'lucide-react';
 import { Card, CrowdBadge, WaitBadge, Button, Badge, MOCK_STALLS } from './SharedComponents';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import VoiceAssistant from './VoiceAssistant';
 
 class VendorErrorBoundary extends React.Component {
     constructor(props) {
@@ -656,6 +657,7 @@ export default function VendorApp({ onLogout, user, onAuthError }) {
                     </div>
                 </div>
             )}
+            <VoiceAssistant user={user} />
         </div>
     );
 }

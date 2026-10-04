@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, MapPin, Star, User, Compass, Heart, Bell, History, X, CheckCircle, Navigation, AlertTriangle, Clock } from 'lucide-react';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Card, CrowdBadge, WaitBadge, Button, MOCK_STALLS } from './SharedComponents';
+import VoiceAssistant from './VoiceAssistant';
 
 const CHENNAI_CENTER = { lat: 13.0827, lon: 80.2707 };
 const haversineKm = (lat1, lon1, lat2, lon2) => {
@@ -679,6 +680,8 @@ export default function CustomerApp({ onLogout, user, onAuthError }) {
                     <span className="text-sm font-semibold tracking-wide">{toast}</span>
                 </div>
             )}
+            
+            <VoiceAssistant user={user} />
         </div>
     );
 }
