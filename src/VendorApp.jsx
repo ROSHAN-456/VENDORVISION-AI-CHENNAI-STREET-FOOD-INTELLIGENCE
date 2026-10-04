@@ -25,7 +25,7 @@ class VendorErrorBoundary extends React.Component {
     }
 }
 
-export default function VendorApp({ onLogout, user }) {
+export default function VendorApp({ onLogout, user, onAuthError }) {
     const [activeTab, setActiveTab] = useState('home');
     const [vendorStall, setVendorStall] = useState(null);
     const [weatherData, setWeatherData] = useState({ weather: "Clear" });

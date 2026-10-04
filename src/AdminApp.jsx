@@ -3,7 +3,7 @@ import { Users, Store, ShieldAlert, BarChart3, Settings, AlignLeft, ChevronDown,
 import { Card, Button, Badge } from './SharedComponents';
 import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-export default function AdminApp({ onLogout, user }) {
+export default function AdminApp({ onLogout, user, onAuthError }) {
     const [activeView, setActiveView] = useState('overview');
     const [menuOpen, setMenuOpen] = useState(false);
     const [data, setData] = useState(null);
@@ -20,7 +20,13 @@ export default function AdminApp({ onLogout, user }) {
 
     const fetchStats = async () => {
         try {
-            const res = await fetch(`${API_BASE}/admin/everything`);
+            const res = await fetch(`${API_BASE}/admin/everything`, {
+                headers: { 'Authorization': `Bearer ${user.token}` }
+            });
+            if (res.status === 401 || res.status === 403) {
+                if (onAuthError) onAuthError(res.status);
+                return;
+            }
             if (!res.ok) throw new Error("Failed to fetch dashboard data");
             const finalData = await res.json();
             setData(finalData);
@@ -125,17 +131,31 @@ export default function AdminApp({ onLogout, user }) {
 
     const handleNotifyAll = async () => {
         if (window.confirm("Trigger notifications to all vendors now?")) {
-            await fetch(`${API_BASE}/notify-all`, { method: 'POST' });
+            const res = await fetch(`${API_BASE}/notify-all`, { 
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${user.token}` }
+            });
+            if (res.status === 401 || res.status === 403) {
+                if (onAuthError) onAuthError(res.status);
+                return;
+            }
             fetchStats();
         }
     };
 
     const handleNotifyVendor = async (stall_id) => {
-        await fetch(`${API_BASE}/notify-vendor`, {
+        const res = await fetch(`${API_BASE}/notify-vendor`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${user.token}` 
+            },
             body: JSON.stringify({ stall_id })
         });
+        if (res.status === 401 || res.status === 403) {
+            if (onAuthError) onAuthError(res.status);
+            return;
+        }
         alert(`Notification sent for ${stall_id}!`);
         fetchStats();
     };

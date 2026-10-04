@@ -128,7 +128,7 @@ function MapView({ stalls, selectedId, onSelectStall, userLoc, hasLocPermission,
     );
 }
 
-export default function CustomerApp({ onLogout, user }) {
+export default function CustomerApp({ onLogout, user, onAuthError }) {
     const [activeTab, setActiveTab] = useState('home');
     const [selectedStall, setSelectedStall] = useState(null);
     const [checkInStall, setCheckInStall] = useState(null);
@@ -265,15 +265,22 @@ export default function CustomerApp({ onLogout, user }) {
 
     const handleCheckInSubmit = async (level) => {
         try {
-            await fetch(`${API_BASE}/checkin`, {
+            const res = await fetch(`${API_BASE}/checkin`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${user.token}`
+                },
                 body: JSON.stringify({
                     stall_id: checkInStall.id,
                     reported_crowd_level: level,
                     timestamp: new Date().toISOString()
                 })
             });
+            if (res.status === 401 || res.status === 403) {
+                if (onAuthError) onAuthError(res.status);
+                return;
+            }
         } catch (e) { console.error(e); }
         const checkedStall = checkInStall;
         setCheckInStall(null);

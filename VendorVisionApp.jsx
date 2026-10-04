@@ -57,8 +57,8 @@ function LandingPage({ setRoute }) {
           AI-powered crowd predictions and wait-time estimates for your favorite street food stalls. Skip the queue or prep for the rush.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 mb-20 w-full sm:w-auto">
-          <Button onClick={() => setRoute('login?role=customer')} variant="primary" className="py-4 px-8 text-[15px] sm:w-auto">Explore Stalls <ArrowRight size={18} /></Button>
-          <Button onClick={() => setRoute('login?role=vendor')} variant="secondary" className="py-4 px-8 text-[15px] bg-transparent text-white border-white/20 hover:bg-white/10 sm:w-auto">I'm a Vendor <Store size={18} /></Button>
+          <Button onClick={() => setRoute('login')} variant="primary" className="py-4 px-8 text-[15px] sm:w-auto">Explore Stalls <ArrowRight size={18} /></Button>
+          <Button onClick={() => setRoute('login')} variant="secondary" className="py-4 px-8 text-[15px] bg-transparent text-white border-white/20 hover:bg-white/10 sm:w-auto">I'm a Vendor <Store size={18} /></Button>
         </div>
 
         {/* Feature Grid */}
@@ -81,39 +81,35 @@ function LandingPage({ setRoute }) {
 }
 
 /* ── Auth Page ──────────────────────────────────────────────────────── */
-function AuthPage({ setRoute, setUser }) {
+function AuthPage({ setRoute, setUser, initialError }) {
   const [role, setRole] = useState('customer');
   const [googleError, setGoogleError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(initialError);
+  const [demoStatus, setDemoStatus] = useState("checking");
+
+  React.useEffect(() => {
+    fetch(`${API_BASE}/auth/demo?role=customer`, { method: 'POST' })
+      .then(res => setDemoStatus(res.ok ? "ok" : "hidden"))
+      .catch(() => setDemoStatus("hidden"));
+  }, []);
 
   const handleGoogleSuccess = async (credentialResponse) => {
     setLoading(true);
     setGoogleError(null);
     try {
-      // Decode the JWT credential on the frontend to extract name/email immediately
-      const decoded = jwtDecode(credentialResponse.credential);
-      const userInfo = { name: decoded.name, email: decoded.email, picture: decoded.picture, role };
-
-      // Also inform the backend (creates/looks up user in SQLite)
-      try {
-        const res = await fetch(`${API_BASE}/auth/google`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ credential: credentialResponse.credential, role }),
-        });
-        if (res.ok) {
-          const backendUser = await res.json();
-          userInfo.id = backendUser.id;
-        }
-      } catch (e) {
-        // Backend may be unreachable in dev — continue with just the decoded info
-        console.warn('Backend /auth/google failed:', e);
-      }
-
-      setUser(userInfo);
-      setRoute(`app-${role}`);
+      const res = await fetch(`${API_BASE}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: credentialResponse.credential, role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Google login failed");
+      setUser({ ...data.user, token: data.token });
+      setRoute(`app-${data.user.role}`);
     } catch (err) {
-      setGoogleError('Google sign-in failed. Please try again.');
+      setGoogleError(err.message);
     } finally {
       setLoading(false);
     }
@@ -123,13 +119,47 @@ function AuthPage({ setRoute, setUser }) {
     setGoogleError('Google sign-in was cancelled or failed. Use the form below.');
   };
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
-    // Fallback email/password login - use form data for display name
-    const emailVal = e.target.email.value;
-    const displayName = emailVal.split('@')[0];
-    setUser({ name: displayName, email: emailVal, role });
-    setRoute(`app-${role}`);
+    setLoading(true);
+    setErrorMsg(null);
+    
+    const email = e.target.email.value;
+    const password = e.target.password.value;
+    const name = e.target.name?.value || email.split('@')[0];
+
+    const endpoint = isLogin ? '/auth/login' : '/auth/signup';
+    const body = isLogin ? { email, password } : { name, email, password, role };
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Authentication failed");
+      
+      setUser({ ...data.user, token: data.token });
+      setRoute(`app-${data.user.role}`);
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemo = async (demoRole) => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/demo?role=${demoRole}`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setUser({ ...data.user, token: data.token });
+        setRoute(`app-${data.user.role}`);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
@@ -141,20 +171,24 @@ function AuthPage({ setRoute, setUser }) {
       </div>
 
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 p-8 animate-fadeUp">
-        <h2 className="text-3xl font-serif font-bold text-slate-800 mb-2">Welcome Back</h2>
-        <p className="text-slate-500 mb-8 font-medium">Log in to view predictions</p>
+        <h2 className="text-3xl font-serif font-bold text-slate-800 mb-2">{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
+        <p className="text-slate-500 mb-8 font-medium">{isLogin ? 'Log in to view predictions' : 'Sign up to get started'}</p>
 
-        {/* Role Selector */}
-        <div className="grid grid-cols-3 gap-2 mb-8 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-          {['customer', 'vendor', 'admin'].map(r => (
-            <button
-              key={r} onClick={() => setRole(r)}
-              className={`py-2 rounded-lg text-sm font-bold capitalize transition-all ${role === r ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+        {errorMsg && <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-200">{errorMsg}</div>}
+
+        {/* Role Selector (only for signup) */}
+        {!isLogin && (
+          <div className="grid grid-cols-2 gap-2 mb-8 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+            {['customer', 'vendor'].map(r => (
+              <button
+                key={r} type="button" onClick={() => setRole(r)}
+                className={`py-2 rounded-lg text-sm font-bold capitalize transition-all ${role === r ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Google Sign-In Button */}
         <div className="mb-4">
@@ -174,18 +208,7 @@ function AuthPage({ setRoute, setUser }) {
               shape="rectangular"
             />
           ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setUser({ name: "Demo User", email: "demo@google.com", role });
-                setRoute(`app-${role}`);
-              }}
-              className="w-full flex items-center justify-center gap-3 border border-slate-300 rounded shadow-sm bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-              style={{ height: '40px' }}
-            >
-              <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
-              Continue with Google
-            </button>
+            <p className="text-sm text-slate-500">Google Client ID not configured</p>
           )}
           {googleError && <p className="text-red-500 text-xs mt-2 font-medium">{googleError}</p>}
         </div>
@@ -200,6 +223,15 @@ function AuthPage({ setRoute, setUser }) {
         {/* Email/Password Fallback */}
         <form onSubmit={handleFormSubmit}>
           <div className="space-y-4 mb-6">
+            {!isLogin && (
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Name</label>
+                <div className="relative">
+                  <User size={18} className="absolute left-3.5 top-3.5 text-slate-400" />
+                  <input name="name" required type="text" placeholder={`e.g. Alex`} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-sm font-medium focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all" />
+                </div>
+              </div>
+            )}
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Email</label>
               <div className="relative">
@@ -211,15 +243,33 @@ function AuthPage({ setRoute, setUser }) {
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Password</label>
               <div className="relative">
                 <Lock size={18} className="absolute left-3.5 top-3.5 text-slate-400" />
-                <input name="password" required type="password" placeholder="••••••••" className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-sm font-medium focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all" />
+                <input name="password" required type="password" minLength={8} placeholder="••••••••" className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-sm font-medium focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all" />
               </div>
             </div>
           </div>
 
-          <Button type="submit" className="w-full h-12 text-[15px]">
-            Continue to {role.charAt(0).toUpperCase() + role.slice(1)} Dashboard <ChevronRight size={18} />
+          <Button disabled={loading} type="submit" className="w-full h-12 text-[15px] mb-4">
+            {isLogin ? 'Log In' : 'Sign Up'} <ChevronRight size={18} />
           </Button>
+
+          <div className="text-center text-sm font-medium text-slate-500">
+            {isLogin ? "Don't have an account? " : "Already have an account? "}
+            <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-brand-600 hover:underline">
+              {isLogin ? 'Sign up' : 'Log in'}
+            </button>
+          </div>
         </form>
+
+        {demoStatus === "ok" && (
+          <div className="mt-8 border-t border-slate-200 pt-6">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 text-center">Demo Logins</p>
+            <div className="flex justify-center gap-2">
+              <button type="button" onClick={() => handleDemo('customer')} className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-medium">Customer</button>
+              <button type="button" onClick={() => handleDemo('vendor')} className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-medium">Vendor</button>
+              <button type="button" onClick={() => handleDemo('admin')} className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-medium">Admin</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -229,18 +279,35 @@ function AuthPage({ setRoute, setUser }) {
 export default function VendorVisionApp() {
   const [route, setRoute] = useState('landing');
   const [user, setUser] = useState(null);
+  const [authError, setAuthError] = useState(null);
 
   const handleLogout = () => {
     setUser(null);
     setRoute('landing');
   };
 
+  const handleAuthError = (status) => {
+    if (status === 401) {
+      setUser(null);
+      setAuthError('Session expired, please log in again');
+      setRoute('login');
+    } else if (status === 403) {
+      setAuthError("You don't have access to this page");
+      setRoute('login');
+    }
+  };
+
+  const navigateToLogin = () => {
+    setAuthError(null);
+    setRoute('login');
+  };
+
   const appContent = (
     <>
-      {route.startsWith('app-customer') && <CustomerApp onLogout={handleLogout} user={user} />}
-      {route.startsWith('app-vendor') && <VendorApp onLogout={handleLogout} user={user} />}
-      {route.startsWith('app-admin') && <AdminApp onLogout={handleLogout} user={user} />}
-      {route.startsWith('login') && <AuthPage setRoute={setRoute} setUser={setUser} />}
+      {route.startsWith('app-customer') && (user?.role === 'customer' ? <CustomerApp onLogout={handleLogout} user={user} onAuthError={handleAuthError} /> : <div onLoad={navigateToLogin} />)}
+      {route.startsWith('app-vendor') && (user?.role === 'vendor' ? <VendorApp onLogout={handleLogout} user={user} onAuthError={handleAuthError} /> : <div onLoad={navigateToLogin} />)}
+      {route.startsWith('app-admin') && (user?.role === 'admin' ? <AdminApp onLogout={handleLogout} user={user} onAuthError={handleAuthError} /> : <div onLoad={navigateToLogin} />)}
+      {route.startsWith('login') && <AuthPage setRoute={setRoute} setUser={setUser} initialError={authError} />}
       {route === 'landing' && <LandingPage setRoute={setRoute} />}
     </>
   );
