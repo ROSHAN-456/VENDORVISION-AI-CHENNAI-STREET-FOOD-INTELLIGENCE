@@ -4,3 +4,9 @@ node_modules/
 *.pyc
 __pycache__/
 dist/
+backend/venv/
+backend/.env
+node_modules/
+dist/
+__pycache__/
+backend/vendorvision.db
