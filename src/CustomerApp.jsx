@@ -230,25 +230,30 @@ export default function CustomerApp({ onLogout, user }) {
                 stall.voteCount = pData.vote_count;
             }
 
-            // Generate Synthetic Forecast
-            const forecastArr = Array.from({ length: 6 }).map((_, i) => {
-                const h = (hour + i + 1) % 24;
-                let mult = 0.8;
-                if (h >= 12 && h <= 14) mult = 1.3;
-                else if (h >= 18 && h <= 20) mult = 1.6;
-                else if (h < 11 || h >= 22) mult = 0.4;
-
-                const simWait = Math.max(2, Math.round(currentWait * mult + (Math.random() * 6 - 3)));
-                let crowd = 'Low';
-                if (simWait > 15) crowd = 'Medium';
-                if (simWait > 25) crowd = 'High';
-
-                const ampm = h >= 12 ? 'PM' : 'AM';
-                const h12 = h % 12 === 0 ? 12 : h % 12;
-                return { time: `${h12} ${ampm}`, wait: simWait, crowd };
+            // Fetch Real Forecast from AI
+            const forecastPromises = Array.from({ length: 6 }).map(async (_, i) => {
+                const forecastHour = (hour + i) % 24;
+                let forecastDay = dayOfWeek;
+                if (hour + i >= 24) {
+                    forecastDay = (dayOfWeek + Math.floor((hour + i) / 24)) % 7;
+                }
+                
+                const res = await fetch(`${API_BASE}/predict?stall_id=${stall.id}&hour=${forecastHour}&day_of_week=${forecastDay}&weather=${wData.condition}`);
+                if (!res.ok) throw new Error("Forecast failed");
+                const data = await res.json();
+                
+                const ampm = forecastHour >= 12 ? 'PM' : 'AM';
+                const h12 = forecastHour % 12 === 0 ? 12 : forecastHour % 12;
+                
+                return { time: `${h12} ${ampm}`, wait: Math.round(data.wait_minutes), crowd: data.crowd_level };
             });
 
-            setSelectedStall(prev => ({ ...prev, liveCrowd: currentCrowd, liveWait: currentWait, forecast: forecastArr }));
+            try {
+                const forecastArr = await Promise.all(forecastPromises);
+                setSelectedStall(prev => ({ ...prev, liveCrowd: currentCrowd, liveWait: currentWait, forecast: forecastArr, forecastError: false }));
+            } catch(e) {
+                setSelectedStall(prev => ({ ...prev, liveCrowd: currentCrowd, liveWait: currentWait, forecast: [], forecastError: true }));
+            }
         } catch (err) {
             console.error(err);
         } finally {

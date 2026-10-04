@@ -535,10 +535,14 @@ def admin_everything():
     stalls_list = deduped.to_dict(orient="records")
     
     def get_stall_area(lat, lon):
-        if lat > 1.35: return "North Area"
-        elif lat < 1.3: return "South Area"
-        elif lon > 103.85: return "East Area"
-        return "West Area"
+        CENTER_LAT = 13.0827
+        CENTER_LON = 80.2707
+        lat_diff = lat - CENTER_LAT
+        lon_diff = lon - CENTER_LON
+        if abs(lat_diff) > abs(lon_diff):
+            return "North Area" if lat_diff > 0 else "South Area"
+        else:
+            return "East Area" if lon_diff > 0 else "West Area"
         
     for s in stalls_list:
         s["area"] = get_stall_area(s["lat"], s["lon"])
