@@ -5,6 +5,10 @@ Endpoints:
   GET  /predict?stall_id=X&hour=N&day_of_week=N&weather=X
   GET  /stalls
   POST /checkin
+  POST /auth/google
+  POST /auth/signup
+  POST /auth/login
+  POST /auth/demo
 """
 
 import os
@@ -27,6 +31,11 @@ import sqlite3
 import base64
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
+
+import jwt
+import bcrypt
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 load_dotenv()
 START_TIME = time.time()
@@ -74,6 +83,25 @@ def notify_all_vendors_job():
     
     return results
 
+# ── Auth config ───────────────────────────────────────────────────────────────
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+APP_SECRET = os.getenv("APP_SECRET", "vendorvision-dev-secret-change-me")
+ADMIN_EMAILS = [e.strip() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()]
+DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
+
+
+def create_access_token(user_id: int, email: str, role: str) -> str:
+    """Issue an HS256 JWT with 12-hour expiry."""
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "role": role,
+        "iat": datetime.utcnow(),
+        "exp": datetime.utcnow() + timedelta(hours=12),
+    }
+    return jwt.encode(payload, APP_SECRET, algorithm="HS256")
+
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -103,7 +131,13 @@ def init_db():
             timestamp TEXT
         )
     ''')
-    
+
+    # ── Safe migration: add password_hash if missing ──────────────────────
+    c.execute("PRAGMA table_info(users)")
+    columns = [row[1] for row in c.fetchall()]
+    if "password_hash" not in columns:
+        c.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+
     c.execute("SELECT COUNT(*) FROM checkins")
     if c.fetchone()[0] == 0 and CHECKINS_PATH.exists():
         try:
@@ -278,39 +312,55 @@ class CheckInRequest(BaseModel):
     reported_crowd_level: str
     timestamp: str
 
+# ── Auth models ───────────────────────────────────────────────────────────────
 class GoogleAuthRequest(BaseModel):
     credential: str
     role: str
 
-def decode_jwt_payload(token: str):
-    parts = token.split('.')
-    if len(parts) != 3:
-        raise Exception("Invalid JWT token")
-    payload_b64 = parts[1]
-    payload_b64 += "=" * ((4 - len(payload_b64) % 4) % 4)
-    return json.loads(base64.urlsafe_b64decode(payload_b64).decode("utf-8"))
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: str
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _safe_user_dict(row) -> dict:
+    """Return a user dict without password_hash."""
+    d = dict(row)
+    d.pop("password_hash", None)
+    return d
+
+
+# ── Auth: Google (verified) ───────────────────────────────────────────────────
 @app.post("/auth/google")
 def auth_google(req: GoogleAuthRequest):
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured on server")
     try:
-        payload = decode_jwt_payload(req.credential)
+        payload = google_id_token.verify_oauth2_token(
+            req.credential,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    
+        raise HTTPException(status_code=401, detail=f"Google token verification failed: {e}")
+
     email = payload.get("email")
-    name = payload.get("name")
-    
+    name = payload.get("name", "")
     if not email:
-        raise HTTPException(status_code=400, detail="Token missing email")
-    
+        raise HTTPException(status_code=401, detail="Google token missing email")
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    
-    # Simple check or create
+
     c.execute("SELECT * FROM users WHERE email = ?", (email,))
     user = c.fetchone()
-    
+
     if not user:
         c.execute("INSERT INTO users (name, email, role) VALUES (?, ?, ?)", (name, email, req.role))
         conn.commit()
@@ -318,15 +368,93 @@ def auth_google(req: GoogleAuthRequest):
         c.execute("SELECT * FROM users WHERE id = ?", (user_id,))
         user = c.fetchone()
     else:
-        # Update role if different or just keep latest (we'll just use what's there for now but ensure we return role)
-        # We can update the role on login if needed, for simplicity let's just update role to latest requested role
         c.execute("UPDATE users SET name = ?, role = ? WHERE email = ?", (name, req.role, email))
         conn.commit()
         c.execute("SELECT * FROM users WHERE email = ?", (email,))
         user = c.fetchone()
-        
+
     conn.close()
-    return dict(user)
+    token = create_access_token(user["id"], user["email"], user["role"])
+    return {"user": _safe_user_dict(user), "token": token}
+
+
+# ── Auth: email/password signup ───────────────────────────────────────────────
+@app.post("/auth/signup")
+def auth_signup(req: SignupRequest):
+    if len(req.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if req.role not in ("customer", "vendor"):
+        # Admin only if email is in ADMIN_EMAILS
+        if req.role == "admin" and req.email in ADMIN_EMAILS:
+            pass
+        else:
+            raise HTTPException(status_code=400, detail="Role must be 'customer' or 'vendor'")
+
+    hashed = bcrypt.hashpw(req.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    c.execute("SELECT id FROM users WHERE email = ?", (req.email,))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    c.execute(
+        "INSERT INTO users (name, email, role, password_hash) VALUES (?, ?, ?, ?)",
+        (req.name, req.email, req.role, hashed),
+    )
+    conn.commit()
+    user_id = c.lastrowid
+    c.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    user = c.fetchone()
+    conn.close()
+
+    token = create_access_token(user["id"], user["email"], user["role"])
+    return {"user": _safe_user_dict(user), "token": token}
+
+
+# ── Auth: email/password login ────────────────────────────────────────────────
+@app.post("/auth/login")
+def auth_login(req: LoginRequest):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE email = ?", (req.email,))
+    user = c.fetchone()
+    conn.close()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    stored_hash = user["password_hash"]
+    if not stored_hash:
+        raise HTTPException(status_code=401, detail="This account uses Google login, not a password")
+
+    if not bcrypt.checkpw(req.password.encode("utf-8"), stored_hash.encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = create_access_token(user["id"], user["email"], user["role"])
+    return {"user": _safe_user_dict(user), "token": token}
+
+
+# ── Auth: demo mode ───────────────────────────────────────────────────────────
+@app.post("/auth/demo")
+def auth_demo(role: str = Query(..., description="customer | vendor | admin")):
+    if not DEMO_MODE:
+        raise HTTPException(status_code=404, detail="Not found")
+    if role not in ("customer", "vendor", "admin"):
+        raise HTTPException(status_code=400, detail="Role must be customer, vendor, or admin")
+
+    demo_users = {
+        "customer": {"id": -1, "name": "Demo Customer", "email": "demo-customer@vendorvision.local"},
+        "vendor":   {"id": -2, "name": "Demo Vendor",   "email": "demo-vendor@vendorvision.local"},
+        "admin":    {"id": -3, "name": "Demo Admin",    "email": "demo-admin@vendorvision.local"},
+    }
+    u = demo_users[role]
+    token = create_access_token(u["id"], u["email"], role)
+    return {"user": {**u, "role": role}, "token": token}
 
 # Simple in-memory cache for weather: {(lat, lon): (timestamp, mapped_weather)}
 weather_cache = {}
