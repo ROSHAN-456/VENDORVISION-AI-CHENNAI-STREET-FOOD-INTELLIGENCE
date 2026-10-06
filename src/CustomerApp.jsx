@@ -213,14 +213,14 @@ export default function CustomerApp({ onLogout, user, onAuthError }) {
         setLoadingPrediction(true);
         try {
             const wRes = await fetch(`${API_BASE}/weather?lat=${stall.lat}&lon=${stall.lon}`);
-            const wData = wRes.ok ? await wRes.json() : { condition: "Clear" };
+            const wData = wRes.ok ? await wRes.json() : { weather: "Clear" };
 
             const now = new Date();
             const hour = now.getHours();
             const dayOfWeek = now.getDay();
 
             // Fetch current prediction
-            const pRes = await fetch(`${API_BASE}/predict?stall_id=${stall.id}&hour=${hour}&day_of_week=${dayOfWeek}&weather=${wData.condition}`);
+            const pRes = await fetch(`${API_BASE}/predict?stall_id=${stall.id}&hour=${hour}&day_of_week=${dayOfWeek}&weather=${wData.weather}`);
             let currentCrowd = stall.liveCrowd;
             let currentWait = stall.liveWait;
             if (pRes.ok) {
@@ -239,7 +239,7 @@ export default function CustomerApp({ onLogout, user, onAuthError }) {
                     forecastDay = (dayOfWeek + Math.floor((hour + i) / 24)) % 7;
                 }
                 
-                const res = await fetch(`${API_BASE}/predict?stall_id=${stall.id}&hour=${forecastHour}&day_of_week=${forecastDay}&weather=${wData.condition}`);
+                const res = await fetch(`${API_BASE}/predict?stall_id=${stall.id}&hour=${forecastHour}&day_of_week=${forecastDay}&weather=${wData.weather}`);
                 if (!res.ok) throw new Error("Forecast failed");
                 const data = await res.json();
                 
