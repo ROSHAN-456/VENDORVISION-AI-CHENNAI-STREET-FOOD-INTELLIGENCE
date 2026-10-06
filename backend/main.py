@@ -547,13 +547,34 @@ def checkin(data: CheckInRequest, user: dict = Depends(get_current_user)):
 class NotifyRequest(BaseModel):
     stall_id: str
 
-def send_vendor_notification(stall_id: str, vendor_email: str):
+def send_email(to_email: str, subject: str, body: str):
     sender = os.getenv("EMAIL_SENDER")
     pwd = os.getenv("EMAIL_APP_PASSWORD")
     
-    if not all([sender, pwd, vendor_email]):
-        raise Exception("Email configuration missing in .env or missing vendor email")
+    if not all([sender, pwd, to_email]):
+        raise Exception("Email configuration missing in .env or missing recipient email")
+        
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = f"VendorVision <{sender}>"
+    msg['To'] = to_email
+    
+    try:
+        import socket
+        host = 'smtp.gmail.com'
+        port = 587
+        host_ip = socket.gethostbyname(host)
+        
+        server = smtplib.SMTP(host_ip, port)
+        server._host = host 
+        server.starttls()
+        server.login(sender, pwd)
+        server.send_message(msg)
+        server.quit()
+    except Exception as e:
+        raise Exception(f"Failed to send email: {e}")
 
+def send_vendor_notification(stall_id: str, vendor_email: str):
     # Get current time info
     now = datetime.now()
     hour = now.hour
@@ -574,25 +595,7 @@ def send_vendor_notification(stall_id: str, vendor_email: str):
     subject = f"VendorVision Alert: {stall_name}"
     body = f"{stall_name}: {day_name} {time_period} — {crowd} crowd expected. Estimated wait: {wait} min."
     
-    msg = MIMEText(body)
-    msg['Subject'] = subject
-    msg['From'] = f"VendorVision <{sender}>"
-    msg['To'] = vendor_email
-    
-    try:
-        import socket
-        host = 'smtp.gmail.com'
-        port = 587
-        host_ip = socket.gethostbyname(host)
-        
-        server = smtplib.SMTP(host_ip, port)
-        server._host = host 
-        server.starttls()
-        server.login(sender, pwd)
-        server.send_message(msg)
-        server.quit()
-    except Exception as e:
-        raise Exception(f"Failed to send email: {e}")
+    send_email(vendor_email, subject, body)
 
 @app.post("/notify-vendor")
 def notify_vendor(req: NotifyRequest, user: dict = Depends(require_role("admin"))):
