@@ -123,7 +123,7 @@ function LandingPage({ setRoute, user, onLogout }) {
           
           <div className="hidden md:flex items-center gap-8 font-semibold text-sm">
             <button onClick={() => setRoute('login?role=customer')} className="text-muted hover:text-ink transition-colors">Explore Stalls</button>
-            <button className="text-muted hover:text-ink transition-colors">How it Works</button>
+            <button onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })} className="text-muted hover:text-ink transition-colors">How it Works</button>
             <button onClick={() => setRoute('login?role=vendor')} className="text-muted hover:text-ink transition-colors">For Vendors</button>
             <div className="flex gap-3">
               {user ? (
@@ -150,7 +150,7 @@ function LandingPage({ setRoute, user, onLogout }) {
         {menuOpen && (
           <div className="md:hidden absolute top-full left-0 w-full bg-paper border-b border-line flex flex-col p-4 gap-4 shadow-soft">
             <button onClick={() => setRoute('login?role=customer')} className="text-ink font-bold text-left p-2">Explore Stalls</button>
-            <button className="text-ink font-bold text-left p-2">How it Works</button>
+            <button onClick={() => { setMenuOpen(false); document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-ink font-bold text-left p-2">How it Works</button>
             <button onClick={() => setRoute('login?role=vendor')} className="text-ink font-bold text-left p-2">For Vendors</button>
             <div className="flex flex-col gap-2 mt-2 pt-4 border-t border-line">
               {user ? (
