@@ -188,7 +188,10 @@ async def lifespan(app: FastAPI):
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="VendorVision AI", version="1.0.0", lifespan=lifespan)
 
-origins = ["http://localhost:5173"]
+origins = [
+    "http://localhost:5173",
+    "https://vendorvision-ai-chennai-street-food.vercel.app",
+]
 frontend_url = os.getenv("FRONTEND_URL")
 if frontend_url:
     origins.append(frontend_url.rstrip("/"))
@@ -196,6 +199,7 @@ if frontend_url:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
