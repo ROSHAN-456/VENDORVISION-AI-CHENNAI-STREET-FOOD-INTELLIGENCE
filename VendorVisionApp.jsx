@@ -11,36 +11,57 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 /* ── Landing Page ──────────────────────────────────────────────────────── */
-function LandingPage({ setRoute }) {
+function LandingPage({ setRoute, user, onLogout }) {
   const [stalls, setStalls] = useState([]);
+  const [rhythm, setRhythm] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   React.useEffect(() => {
     async function fetchPreview() {
       try {
         const res = await fetch(`${API_BASE}/stalls`);
-        if (!res.ok) throw new Error('Network response was not ok');
+        if (!res.ok) throw new Error('Network error');
         const data = await res.json();
         
         const now = new Date();
-        const hour = now.getHours();
+        const currentHour = now.getHours();
         const dayOfWeek = now.getDay();
         
         const top3 = data.slice(0, 3);
         const merged = await Promise.all(top3.map(async s => {
           let base = { ...s };
           try {
-             const pRes = await fetch(`${API_BASE}/predict?stall_id=${s.id}&hour=${hour}&day_of_week=${dayOfWeek}&weather=Clear`);
+             const pRes = await fetch(`${API_BASE}/predict?stall_id=${s.id}&hour=${currentHour}&day_of_week=${dayOfWeek}&weather=Clear`);
              if (pRes.ok) {
                  const p = await pRes.json();
                  base.liveWait = p.wait_minutes;
                  base.liveCrowd = p.crowd_level;
+                 base.source = p.source;
+                 base.voteCount = p.vote_count;
              }
           } catch(e) {}
           return base;
         }));
         setStalls(merged);
+
+        // Fetch rhythm for the first stall
+        if (data.length > 0) {
+          const stallId = data[0].id;
+          const hours = Array.from({ length: 13 }, (_, i) => 10 + i); // 10:00 to 22:00
+          const rData = await Promise.all(hours.map(async h => {
+             try {
+                const pRes = await fetch(`${API_BASE}/predict?stall_id=${stallId}&hour=${h}&day_of_week=${dayOfWeek}&weather=Clear`);
+                if (pRes.ok) {
+                    const p = await pRes.json();
+                    return { hour: h, crowd: p.crowd_level };
+                }
+             } catch(e) {}
+             return { hour: h, crowd: 'Low' };
+          }));
+          setRhythm(rData);
+        }
       } catch (err) {
         setError(true);
       } finally {
@@ -50,137 +71,196 @@ function LandingPage({ setRoute }) {
     fetchPreview();
   }, []);
 
-  const scrollToFeatures = () => {
-    document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
+  const getMeterColor = (level) => {
+    if (level === 'High') return 'bg-chili';
+    if (level === 'Medium') return 'bg-saffron';
+    return 'bg-crowdLow';
+  };
+  
+  const getMeterWidth = (level) => {
+    if (level === 'High') return '100%';
+    if (level === 'Medium') return '60%';
+    return '30%';
   };
 
   return (
-    <div className="min-h-screen bg-brand-900 text-slate-100 flex flex-col font-sans w-full overflow-x-hidden">
-      <header className="px-6 py-6 flex justify-between items-center bg-brand-900 border-b border-white/5 relative z-20 w-full max-w-7xl mx-auto">
-        <div>
-          <div className="text-accent text-[10px] uppercase tracking-[0.2em] font-bold mb-1">Chennai Street Food AI</div>
-          <div className="font-serif text-2xl font-bold text-white">VendorVision <span className="text-brand-500">AI</span></div>
+    <div className="min-h-screen bg-cream text-ink font-sans w-full overflow-x-hidden relative">
+      {/* Subtle texture background */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, #1B2A24 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
+      
+      {/* Sticky NAV */}
+      <header className="sticky top-0 z-50 bg-cream/80 backdrop-blur-md border-b border-line px-6 py-4 transition-all">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className="font-serif text-2xl font-bold text-ink tracking-tight">VendorVision</span>
+              <span className="bg-saffron text-ink px-2 py-0.5 rounded-full text-xs font-bold">AI</span>
+            </div>
+            <span className="text-muted text-[10px] uppercase tracking-wider font-bold">Chennai street food, predicted</span>
+          </div>
+          
+          <div className="hidden md:flex items-center gap-8 font-semibold text-sm">
+            <button onClick={() => setRoute('login?role=customer')} className="text-muted hover:text-ink transition-colors">Explore Stalls</button>
+            <button className="text-muted hover:text-ink transition-colors">How it Works</button>
+            <button onClick={() => setRoute('login?role=vendor')} className="text-muted hover:text-ink transition-colors">For Vendors</button>
+            <div className="flex gap-3">
+              {user ? (
+                <>
+                  <span className="text-ink font-bold flex items-center px-2">{user.name}</span>
+                  <button onClick={() => setRoute(`app-${user.role}`)} className="h-12 px-6 rounded-[999px] bg-leaf text-cream font-bold hover:-translate-y-0.5 hover:bg-leaf/90 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron">Go to dashboard</button>
+                  <button onClick={onLogout} className="h-12 px-6 rounded-[999px] border border-ink text-ink font-bold hover:bg-ink/5 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron">Logout</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setRoute('login')} className="h-12 px-6 rounded-[999px] border border-ink text-ink font-bold hover:bg-ink/5 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron">Log in</button>
+                  <button onClick={() => setRoute('login')} className="h-12 px-6 rounded-[999px] bg-leaf text-cream font-bold hover:-translate-y-0.5 hover:bg-leaf/90 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron">Sign up</button>
+                </>
+              )}
+            </div>
+          </div>
+          
+          {/* Mobile menu toggle */}
+          <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden p-2 text-ink">
+            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          </button>
         </div>
-        <div className="hidden md:flex gap-8 items-center font-semibold text-sm">
-          <button onClick={scrollToFeatures} className="text-white/70 hover:text-white transition-colors h-[44px]">How it Works</button>
-          <Button onClick={() => setRoute('login')} variant="outline" className="ml-4 h-[44px]">Log in</Button>
-        </div>
-        <button
-          onClick={() => setRoute('login')}
-          className="md:hidden px-4 py-2 bg-brand-500 text-white font-bold text-sm rounded-lg h-[44px]"
-        >
-          Get Started
-        </button>
+        {/* Mobile menu */}
+        {menuOpen && (
+          <div className="md:hidden absolute top-full left-0 w-full bg-paper border-b border-line flex flex-col p-4 gap-4 shadow-soft">
+            <button onClick={() => setRoute('login?role=customer')} className="text-ink font-bold text-left p-2">Explore Stalls</button>
+            <button className="text-ink font-bold text-left p-2">How it Works</button>
+            <button onClick={() => setRoute('login?role=vendor')} className="text-ink font-bold text-left p-2">For Vendors</button>
+            <div className="flex flex-col gap-2 mt-2 pt-4 border-t border-line">
+              {user ? (
+                <>
+                  <button onClick={() => setRoute(`app-${user.role}`)} className="h-12 rounded-[999px] bg-leaf text-cream font-bold">Go to dashboard</button>
+                  <button onClick={onLogout} className="h-12 rounded-[999px] border border-ink text-ink font-bold">Logout</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setRoute('login')} className="h-12 rounded-[999px] border border-ink text-ink font-bold">Log in</button>
+                  <button onClick={() => setRoute('login')} className="h-12 rounded-[999px] bg-leaf text-cream font-bold">Sign up</button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-start text-center relative z-10 w-full max-w-6xl mx-auto animate-fadeUp">
-        {/* HERO SECTION */}
-        <section className="px-6 py-16 md:py-24 w-full flex flex-col items-center">
-          <h1 className="text-4xl md:text-6xl font-serif font-bold text-white leading-tight mb-6">
-            Predict the crowd. Skip the wait.
-          </h1>
-          <p className="text-lg md:text-xl text-white/60 font-medium max-w-2xl mb-10 leading-relaxed">
-            AI-powered crowd predictions and wait-time estimates for your favorite street food stalls in Chennai.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 mb-8 w-full sm:w-auto px-4 sm:px-0">
-            <Button onClick={() => setRoute('login?role=customer')} variant="primary" className="py-4 px-8 h-[44px] sm:w-auto w-full">Find a stall now <ArrowRight size={18} /></Button>
-            <Button onClick={() => setRoute('login?role=vendor')} variant="secondary" className="py-4 px-8 h-[44px] bg-transparent text-white border-white/20 hover:bg-white/10 sm:w-auto w-full">For vendors <Store size={18} /></Button>
-          </div>
-          <p className="text-xs text-white/40 italic max-w-lg">
-            Predictions come from an AI model trained on simulated Chennai footfall data and improved by live customer check-ins.
-          </p>
-        </section>
-
-        {/* LIVE PREVIEW SECTION */}
-        <section className="px-6 w-full mb-20">
-          <div className="max-w-4xl mx-auto bg-white/5 border border-white/10 rounded-2xl p-6 text-left">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2"><Zap size={20} className="text-accent" /> Live Preview</h2>
-              <span className="text-xs bg-white/10 px-2 py-1 rounded text-white/70 uppercase tracking-widest font-bold">AI Forecast</span>
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-12 md:py-20 relative z-10">
+        <div className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-center">
+          
+          {/* HERO LEFT */}
+          <div className="flex-1 flex flex-col items-start text-left w-full">
+            <div className="bg-curry text-leaf px-3 py-1 rounded-[999px] text-xs font-bold uppercase tracking-widest mb-6 inline-flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-leaf animate-pulse"></span> Live in Chennai
             </div>
-            {loading ? (
-              <div className="flex justify-center items-center h-24">
-                <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+            
+            <h1 className="text-[clamp(2.5rem,5vw,4.5rem)] font-serif font-bold text-ink leading-[1.1] mb-6">
+              Know the crowd <br />
+              <span className="text-saffron italic">before you go.</span>
+            </h1>
+            
+            <p className="text-lg md:text-xl text-muted font-medium mb-10 max-w-lg">
+              AI-powered footfall predictions and wait-time estimates for your favorite street food stalls.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto mb-4">
+              <button onClick={() => setRoute('login?role=customer')} className="h-12 px-8 rounded-[999px] bg-leaf text-cream font-bold hover:-translate-y-0.5 hover:bg-leaf/90 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron w-full sm:w-auto text-center">
+                Explore stalls
+              </button>
+              <button onClick={() => setRoute('login?role=vendor')} className="h-12 px-8 rounded-[999px] border border-ink text-ink font-bold hover:bg-ink/5 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron w-full sm:w-auto text-center">
+                I'm a vendor
+              </button>
+            </div>
+            <p className="text-sm text-muted font-medium">No sign-up needed to browse.</p>
+          </div>
+
+          {/* HERO RIGHT (Live Card) */}
+          <div className="w-full lg:w-[500px] shrink-0">
+            <div className="bg-paper rounded-[16px] p-6 shadow-soft border border-line relative overflow-hidden">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-saffron animate-pulse"></div>
+                  <span className="text-xs font-bold text-muted uppercase tracking-widest">Updating live</span>
+                </div>
+                <span className="text-xs bg-cream border border-line px-2 py-1 rounded-[999px] text-ink font-bold">
+                  {stalls.length > 0 && stalls[0]?.source === 'crowd_votes' ? `Based on ${stalls[0]?.voteCount} live reports` : 'AI forecast'}
+                </span>
               </div>
-            ) : error || stalls.length === 0 ? (
-              <div className="text-center text-white/50 py-8 bg-white/5 rounded-xl border border-white/10">
-                <p className="font-semibold mb-2">Live preview currently unavailable.</p>
-                <button onClick={() => window.location.reload()} className="text-brand-400 hover:underline text-sm h-[44px]">Retry Connection</button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {stalls.map(stall => (
-                  <div key={stall.id} className="bg-brand-800 border border-white/10 rounded-xl p-4 flex flex-col h-full">
-                    <h3 className="font-bold text-lg mb-4 text-white truncate">{stall.name}</h3>
-                    <div className="mt-auto flex flex-wrap gap-2">
-                      <CrowdBadge level={stall.liveCrowd || 'Low'} />
-                      <WaitBadge min={stall.liveWait || 0} />
+
+              {loading ? (
+                <div className="space-y-4 animate-pulse">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-20 bg-cream rounded-xl border border-line"></div>
+                  ))}
+                  <p className="text-center text-muted text-sm mt-4">Loading live data...</p>
+                </div>
+              ) : error || stalls.length === 0 ? (
+                <div className="text-center py-10 bg-cream rounded-xl border border-line">
+                  <p className="font-semibold text-ink mb-2">Live data will appear when the server is running</p>
+                  <button onClick={() => window.location.reload()} className="text-leaf hover:underline text-sm font-bold">Retry Connection</button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {stalls.map(stall => (
+                    <div key={stall.id} className="bg-cream border border-line rounded-xl p-4 flex flex-col gap-3">
+                      <div className="flex justify-between items-start">
+                        <h3 className="font-bold text-ink text-lg truncate pr-2">{stall.name}</h3>
+                        <div className="text-right shrink-0">
+                          <span className="block font-bold text-ink text-sm">{stall.liveWait || 0} min</span>
+                          <span className="block text-[10px] text-muted uppercase tracking-wider font-bold">Wait</span>
+                        </div>
+                      </div>
+                      
+                      {/* Animated crowd meter */}
+                      <div className="w-full h-2 bg-line rounded-full overflow-hidden mt-1 relative">
+                        <div 
+                           className={`absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-out ${getMeterColor(stall.liveCrowd)}`} 
+                           style={{ width: getMeterWidth(stall.liveCrowd) }}
+                        ></div>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-muted">
+                        <span>Low</span>
+                        <span className="text-ink">{stall.liveCrowd || 'Low'} Crowd</span>
+                        <span>High</span>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          
+        </div>
+        
+        {/* Today's Rhythm */}
+        <div className="mt-16 pt-8 border-t border-line">
+          <p className="text-sm font-bold text-ink mb-6 flex items-center gap-2">
+            Today's rhythm <span className="text-muted font-normal text-xs">— Predicted crowd for the day</span>
+          </p>
+          
+          <div className="flex items-end h-24 gap-1 sm:gap-2 max-w-2xl">
+            {rhythm.map((r, i) => {
+              const isCurrent = r.hour === new Date().getHours();
+              const height = r.crowd === 'High' ? '100%' : r.crowd === 'Medium' ? '60%' : '30%';
+              const bg = isCurrent ? getMeterColor(r.crowd) : 'bg-line';
+              
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full gap-2 group relative">
+                  <div className={`w-full rounded-t-sm transition-all ${bg} ${isCurrent ? '' : 'opacity-60'}`} style={{ height }}></div>
+                  <span className={`text-[10px] font-bold ${isCurrent ? 'text-ink' : 'text-muted'}`}>{r.hour}</span>
+                  
+                  {/* Tooltip on hover */}
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-ink text-paper text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                    {r.crowd}
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              );
+            })}
           </div>
-        </section>
-
-        {/* HOW IT WORKS SECTION */}
-        <section id="how-it-works" className="px-6 py-16 w-full bg-brand-950">
-          <h2 className="text-3xl font-serif font-bold text-white mb-12">How it works</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto h-full">
-            <div className="flex flex-col items-center text-center h-full">
-              <div className="w-16 h-16 bg-brand-800 rounded-full flex items-center justify-center text-accent font-bold text-2xl mb-4 shrink-0 shadow-lg">1</div>
-              <h3 className="font-bold text-xl mb-3">AI Predicts the Crowd</h3>
-              <p className="text-white/60 text-sm">Our models forecast footfall based on location, time, and weather data.</p>
-            </div>
-            <div className="flex flex-col items-center text-center h-full">
-              <div className="w-16 h-16 bg-brand-800 rounded-full flex items-center justify-center text-accent font-bold text-2xl mb-4 shrink-0 shadow-lg">2</div>
-              <h3 className="font-bold text-xl mb-3">Customers Check In</h3>
-              <p className="text-white/60 text-sm">Users report live crowd levels, improving the accuracy of the predictions instantly.</p>
-            </div>
-            <div className="flex flex-col items-center text-center h-full">
-              <div className="w-16 h-16 bg-brand-800 rounded-full flex items-center justify-center text-accent font-bold text-2xl mb-4 shrink-0 shadow-lg">3</div>
-              <h3 className="font-bold text-xl mb-3">Vendors Prepare</h3>
-              <p className="text-white/60 text-sm">Vendors receive alerts before the rush to manage inventory and serve more customers.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* WHO IT'S FOR SECTION */}
-        <section className="px-6 py-20 w-full">
-          <h2 className="text-3xl font-serif font-bold text-white mb-12">Who it's for</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-left flex flex-col h-full">
-              <User size={28} className="text-accent mb-4 shrink-0" />
-              <h3 className="text-xl font-bold mb-4">Customers</h3>
-              <ul className="text-sm text-white/70 space-y-3 mt-auto">
-                <li className="flex gap-2 items-start"><CheckCircle size={16} className="text-brand-400 shrink-0 mt-0.5" /> Know the wait time before arriving.</li>
-                <li className="flex gap-2 items-start"><CheckCircle size={16} className="text-brand-400 shrink-0 mt-0.5" /> Navigate directly to the best stalls.</li>
-              </ul>
-            </div>
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-left flex flex-col h-full">
-              <Store size={28} className="text-accent mb-4 shrink-0" />
-              <h3 className="text-xl font-bold mb-4">Vendors</h3>
-              <ul className="text-sm text-white/70 space-y-3 mt-auto">
-                <li className="flex gap-2 items-start"><CheckCircle size={16} className="text-brand-400 shrink-0 mt-0.5" /> See daily and weekly demand forecasts.</li>
-                <li className="flex gap-2 items-start"><CheckCircle size={16} className="text-brand-400 shrink-0 mt-0.5" /> Receive automated email alerts for rushes.</li>
-              </ul>
-            </div>
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-left flex flex-col h-full">
-              <Lock size={28} className="text-accent mb-4 shrink-0" />
-              <h3 className="text-xl font-bold mb-4">Admins</h3>
-              <ul className="text-sm text-white/70 space-y-3 mt-auto">
-                <li className="flex gap-2 items-start"><CheckCircle size={16} className="text-brand-400 shrink-0 mt-0.5" /> Monitor system metrics and user activity.</li>
-                <li className="flex gap-2 items-start"><CheckCircle size={16} className="text-brand-400 shrink-0 mt-0.5" /> Track the performance of all areas.</li>
-              </ul>
-            </div>
-          </div>
-        </section>
+        </div>
       </main>
-
-      <footer className="w-full py-8 border-t border-white/10 text-center text-white/40 text-sm bg-brand-950 mt-auto">
-        <p className="font-bold text-white/60 mb-2">VendorVision AI</p>
-        <p>A smart footfall prediction system for Chennai's street food vendors and customers.</p>
-      </footer>
     </div>
   );
 }
@@ -413,7 +493,7 @@ export default function VendorVisionApp() {
       {route.startsWith('app-vendor') && (user?.role === 'vendor' ? <VendorApp onLogout={handleLogout} user={user} onAuthError={handleAuthError} /> : <div onLoad={navigateToLogin} />)}
       {route.startsWith('app-admin') && (user?.role === 'admin' ? <AdminApp onLogout={handleLogout} user={user} onAuthError={handleAuthError} /> : <div onLoad={navigateToLogin} />)}
       {route.startsWith('login') && <AuthPage setRoute={setRoute} setUser={setUser} initialError={authError} />}
-      {route === 'landing' && <LandingPage setRoute={setRoute} />}
+      {route === 'landing' && <LandingPage setRoute={setRoute} user={user} onLogout={handleLogout} />}
     </>
   );
 

@@ -11,7 +11,7 @@
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..900&family=Plus+Jakarta+Sans:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -22,12 +22,25 @@
       theme: {
         extend: {
           colors: {
-            brand: { 50: '#F5EFD9', 100: '#D7EAE1', 500: '#2E7A6A', 600: '#246154', 900: '#18221E' },
-            accent: '#E0A030', danger: '#C13A30'
+            cream: '#FBF5E9',
+            paper: '#FFFDF8',
+            ink: '#1B2A24',
+            muted: '#5E6B64',
+            leaf: '#1F5A4A',
+            saffron: '#E8A317',
+            chili: '#C8432B',
+            curry: '#DCEBDD',
+            line: '#E8DEC9',
+            crowdLow: '#2E9E6B',
+            crowdMedium: '#E8A317',
+            crowdHigh: '#C8432B'
           },
           fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-            serif: ['Georgia', 'serif']
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            serif: ['Fraunces', 'serif']
+          },
+          boxShadow: {
+            soft: '0 10px 30px rgba(27,42,36,.08)'
           },
           animation: {
             fadeUp: 'fadeUp 0.3s ease-out forwards',
@@ -43,6 +56,20 @@
     }
   </script>
   <style>
+    :root {
+      --color-cream: #FBF5E9;
+      --color-paper: #FFFDF8;
+      --color-ink: #1B2A24;
+      --color-muted: #5E6B64;
+      --color-leaf: #1F5A4A;
+      --color-saffron: #E8A317;
+      --color-chili: #C8432B;
+      --color-curry: #DCEBDD;
+      --color-line: #E8DEC9;
+      --color-crowdLow: #2E9E6B;
+      --color-crowdMedium: #E8A317;
+      --color-crowdHigh: #C8432B;
+    }
     *,
     *::before,
     *::after {
@@ -55,10 +82,24 @@
     body,
     #root {
       height: 100%;
+      background-color: var(--color-cream);
+      color: var(--color-ink);
     }
 
     body {
-      font-family: 'Inter', system-ui, sans-serif;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      line-height: 1.6;
+    }
+    
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      ::before,
+      ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
   </style>
 </head>
