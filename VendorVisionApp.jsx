@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
-import { ArrowRight, User, Lock, UserCircle, Store, Eye, Search, Zap, Mail, ChevronRight, CheckCircle } from 'lucide-react';
+import { ArrowRight, User, Lock, UserCircle, Store, Eye, Search, Zap, Mail, ChevronRight, CheckCircle, Brain, Smartphone, Bell, Map as MapIcon, BarChart3, Info, MapPin } from 'lucide-react';
 import { Button, CrowdBadge, WaitBadge } from './src/SharedComponents';
 import CustomerApp from './src/CustomerApp';
 import VendorApp from './src/VendorApp';
@@ -9,10 +9,12 @@ import AdminApp from './src/AdminApp';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+const COURSE_TEAM_NAME = "FDS Project - Team 8";
 
 /* ── Landing Page ──────────────────────────────────────────────────────── */
 function LandingPage({ setRoute, user, onLogout }) {
   const [stalls, setStalls] = useState([]);
+  const [allStalls, setAllStalls] = useState([]);
   const [rhythm, setRhythm] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -24,6 +26,7 @@ function LandingPage({ setRoute, user, onLogout }) {
         const res = await fetch(`${API_BASE}/stalls`);
         if (!res.ok) throw new Error('Network error');
         const data = await res.json();
+        setAllStalls(data);
         
         const now = new Date();
         const currentHour = now.getHours();
@@ -70,6 +73,25 @@ function LandingPage({ setRoute, user, onLogout }) {
     }
     fetchPreview();
   }, []);
+
+  React.useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.remove('opacity-0', 'translate-y-4');
+          entry.target.classList.add('opacity-100', 'translate-y-0');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+    
+    setTimeout(() => {
+      document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+    }, 100);
+    
+    return () => observer.disconnect();
+  }, [loading]);
+
 
   const getMeterColor = (level) => {
     if (level === 'High') return 'bg-chili';
@@ -260,7 +282,220 @@ function LandingPage({ setRoute, user, onLogout }) {
             })}
           </div>
         </div>
+
+        {/* 1. HOW IT WORKS */}
+        <section id="how-it-works" className="mt-20 pt-20 border-t border-line animate-on-scroll opacity-0 translate-y-4 transition-all duration-500 ease-out">
+          <h2 className="text-[clamp(2rem,4vw,3rem)] font-serif font-bold text-ink mb-12 text-center">How it works</h2>
+          <div className="relative max-w-5xl mx-auto flex flex-col md:flex-row gap-8 justify-between">
+            <div className="hidden md:block absolute top-10 left-[15%] right-[15%] h-[1px] border-t border-dashed border-line"></div>
+            
+            <div className="flex-1 flex flex-col items-center text-center relative z-10">
+              <div className="w-20 h-20 bg-leaf text-cream rounded-full flex items-center justify-center font-bold text-2xl mb-6 shadow-soft shrink-0">1</div>
+              <h3 className="font-bold text-xl mb-3 text-ink flex items-center gap-2"><Brain size={20} className="text-leaf" /> AI predicts the crowd</h3>
+              <p className="text-muted text-sm font-medium">Models forecast footfall based on time, day, and weather patterns.</p>
+            </div>
+            
+            <div className="flex-1 flex flex-col items-center text-center relative z-10">
+              <div className="w-20 h-20 bg-leaf text-cream rounded-full flex items-center justify-center font-bold text-2xl mb-6 shadow-soft shrink-0">2</div>
+              <h3 className="font-bold text-xl mb-3 text-ink flex items-center gap-2"><Smartphone size={20} className="text-leaf" /> Customers check in</h3>
+              <p className="text-muted text-sm font-medium">Users report real crowd levels in one tap, improving predictions instantly.</p>
+            </div>
+            
+            <div className="flex-1 flex flex-col items-center text-center relative z-10">
+              <div className="w-20 h-20 bg-leaf text-cream rounded-full flex items-center justify-center font-bold text-2xl mb-6 shadow-soft shrink-0">3</div>
+              <h3 className="font-bold text-xl mb-3 text-ink flex items-center gap-2"><Bell size={20} className="text-leaf" /> Vendors get ready</h3>
+              <p className="text-muted text-sm font-medium">Vendors receive forecasts and email alerts to manage inventory before rushes.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* 2. FIND YOUR QUIET STALL (MAP) */}
+        <section className="mt-20 pt-20 border-t border-line animate-on-scroll opacity-0 translate-y-4 transition-all duration-500 ease-out">
+          <h2 className="text-[clamp(2rem,4vw,3rem)] font-serif font-bold text-ink mb-12 text-center">Find your quiet stall</h2>
+          <div className="max-w-4xl mx-auto bg-paper border border-line rounded-[16px] p-6 md:p-10 shadow-soft">
+            <div className="aspect-video w-full bg-cream border border-line rounded-xl relative overflow-hidden flex items-center justify-center">
+              {loading ? (
+                <div className="flex flex-col items-center gap-3 text-muted animate-pulse">
+                  <MapIcon size={32} />
+                  <p className="font-bold text-sm">Loading map data...</p>
+                </div>
+              ) : error || allStalls.length === 0 ? (
+                <div className="text-center text-muted">
+                  <MapIcon size={32} className="mx-auto mb-3 opacity-50" />
+                  <p className="font-bold text-sm">Map data unavailable.</p>
+                </div>
+              ) : (
+                <div className="w-full h-full relative">
+                  {/* Pseudo Map Plotting using SVG bounds */}
+                  <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    {/* Abstract street lines */}
+                    <path d="M10,90 Q30,40 90,10 M10,10 Q50,50 90,90" fill="none" stroke="var(--color-line)" strokeWidth="0.5" strokeDasharray="2,2"/>
+                  </svg>
+                  
+                  {allStalls.map((s, idx) => {
+                     // Very naive scaling
+                     const minLat = Math.min(...allStalls.map(st => st.latitude || 13.0));
+                     const maxLat = Math.max(...allStalls.map(st => st.latitude || 13.1));
+                     const minLng = Math.min(...allStalls.map(st => st.longitude || 80.0));
+                     const maxLng = Math.max(...allStalls.map(st => st.longitude || 80.1));
+                     
+                     const latSpan = (maxLat - minLat) || 0.01;
+                     const lngSpan = (maxLng - minLng) || 0.01;
+                     
+                     // 10% to 90% range to keep dots inside
+                     const x = 10 + (((s.longitude || (80.0 + idx * 0.01)) - minLng) / lngSpan) * 80;
+                     const y = 90 - (((s.latitude || (13.0 + idx * 0.01)) - minLat) / latSpan) * 80; // invert Y
+                     
+                     return (
+                        <div key={s.id} className="absolute group cursor-pointer" style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}>
+                          <div className={`w-3 h-3 rounded-full border-2 border-white shadow-sm ${getMeterColor(s.liveCrowd || 'Low')}`}></div>
+                          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-ink text-paper text-xs font-bold px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 shadow-soft">
+                            <p className="mb-1">{s.name}</p>
+                            <p className="text-[10px] text-muted uppercase tracking-widest">{s.liveWait || 0} min wait</p>
+                          </div>
+                        </div>
+                     );
+                  })}
+                </div>
+              )}
+              
+              <div className="absolute bottom-4 left-4 bg-paper/90 backdrop-blur border border-line p-2 rounded-lg flex gap-3 shadow-soft">
+                <div className="flex items-center gap-1 text-[10px] font-bold text-muted uppercase tracking-widest"><div className="w-2 h-2 rounded-full bg-crowdLow"></div> Low</div>
+                <div className="flex items-center gap-1 text-[10px] font-bold text-muted uppercase tracking-widest"><div className="w-2 h-2 rounded-full bg-saffron"></div> Med</div>
+                <div className="flex items-center gap-1 text-[10px] font-bold text-muted uppercase tracking-widest"><div className="w-2 h-2 rounded-full bg-chili"></div> High</div>
+              </div>
+            </div>
+            
+            <div className="mt-8 text-center">
+              <button onClick={() => setRoute('login?role=customer')} className="h-12 px-8 rounded-[999px] border border-ink text-ink font-bold hover:bg-ink/5 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron inline-flex items-center gap-2">
+                <MapPin size={18} /> Open the full map
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* 3. BUILT FOR BOTH SIDES */}
+        <section id="vendors" className="mt-20 pt-20 border-t border-line animate-on-scroll opacity-0 translate-y-4 transition-all duration-500 ease-out">
+          <h2 className="text-[clamp(2rem,4vw,3rem)] font-serif font-bold text-ink mb-12 text-center">Built for both sides of the stall</h2>
+          
+          <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-6 items-stretch">
+            {/* Customers Card */}
+            <div className="flex-1 bg-paper border border-line rounded-[16px] p-8 md:p-10 shadow-soft flex flex-col">
+              <UserCircle size={32} className="text-leaf mb-6 shrink-0" />
+              <h3 className="text-2xl font-bold text-ink mb-6">Customers</h3>
+              <ul className="space-y-4 mb-10 flex-1 text-left">
+                <li className="flex gap-3 items-start font-medium text-muted">
+                  <CheckCircle size={20} className="text-leaf shrink-0 mt-0.5" /> See the wait before you go
+                </li>
+                <li className="flex gap-3 items-start font-medium text-muted">
+                  <CheckCircle size={20} className="text-leaf shrink-0 mt-0.5" /> Find the quietest stall nearby
+                </li>
+                <li className="flex gap-3 items-start font-medium text-muted">
+                  <CheckCircle size={20} className="text-leaf shrink-0 mt-0.5" /> Report the crowd in one tap
+                </li>
+              </ul>
+              <button onClick={() => setRoute('login?role=customer')} className="h-12 px-8 rounded-[999px] bg-leaf text-cream font-bold hover:-translate-y-0.5 hover:bg-leaf/90 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron text-center w-full mt-auto">
+                Explore Stalls
+              </button>
+            </div>
+            
+            {/* Vendors Card */}
+            <div className="flex-1 bg-paper border border-line rounded-[16px] p-8 md:p-10 shadow-soft flex flex-col">
+              <Store size={32} className="text-saffron mb-6 shrink-0" />
+              <h3 className="text-2xl font-bold text-ink mb-6">Vendors</h3>
+              <ul className="space-y-4 mb-10 flex-1 text-left">
+                <li className="flex gap-3 items-start font-medium text-muted">
+                  <CheckCircle size={20} className="text-leaf shrink-0 mt-0.5" /> See the day's demand forecast hour by hour
+                </li>
+                <li className="flex gap-3 items-start font-medium text-muted">
+                  <CheckCircle size={20} className="text-leaf shrink-0 mt-0.5" /> Get a peak-hour email alert
+                </li>
+                <li className="flex gap-3 items-start font-medium text-muted">
+                  <CheckCircle size={20} className="text-leaf shrink-0 mt-0.5" /> See how rain changes your day
+                </li>
+              </ul>
+              <button onClick={() => setRoute('login?role=vendor')} className="h-12 px-8 rounded-[999px] border border-ink text-ink font-bold hover:bg-ink/5 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron text-center w-full mt-auto">
+                Join as a vendor
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* 4. HONEST BY DESIGN */}
+        <section className="mt-20 pt-20 border-t border-line animate-on-scroll opacity-0 translate-y-4 transition-all duration-500 ease-out">
+          <div className="max-w-4xl mx-auto bg-curry border border-line rounded-[16px] p-8 md:p-10 flex flex-col md:flex-row gap-8 items-center shadow-soft">
+            <div className="shrink-0">
+              <div className="w-16 h-16 bg-leaf text-cream rounded-full flex items-center justify-center shadow-soft">
+                <Info size={32} />
+              </div>
+            </div>
+            <div className="flex-1 text-left">
+              <h2 className="text-2xl font-bold text-leaf mb-4">Honest by design</h2>
+              <p className="text-ink font-medium leading-relaxed mb-6">
+                Predictions come from a Random Forest model trained on simulated Chennai footfall data. Live customer check-ins override the forecast when enough people report the crowd.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-leaf/20 pt-6">
+                <div>
+                  <p className="font-bold text-leaf text-xl">{allStalls.length || 0}</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-leaf/70 mt-1">Stalls tracked</p>
+                </div>
+                <div>
+                  <p className="font-bold text-leaf text-xl">10:00 - 22:00</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-leaf/70 mt-1">Hours covered</p>
+                </div>
+                <div>
+                  <p className="font-bold text-leaf text-xl">4</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-leaf/70 mt-1">Weather patterns</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
       </main>
+
+      {/* 5. FINAL CTA BAND */}
+      <section className="w-full bg-leaf py-16 px-6 relative z-10 text-center animate-on-scroll opacity-0 translate-y-4 transition-all duration-500 ease-out">
+        <h2 className="text-3xl md:text-4xl font-serif font-bold text-cream mb-10 max-w-2xl mx-auto">
+          See how busy your favourite stall is right now.
+        </h2>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <button onClick={() => setRoute('login?role=customer')} className="h-12 px-8 rounded-[999px] bg-saffron text-ink font-bold hover:-translate-y-0.5 hover:bg-saffron/90 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-cream sm:w-auto w-full">
+            Explore stalls
+          </button>
+          <button onClick={() => setRoute('login?role=vendor')} className="h-12 px-8 rounded-[999px] border border-cream text-cream font-bold hover:bg-cream/10 transition-all focus-visible:outline focus-visible:outline-3 focus-visible:outline-saffron sm:w-auto w-full">
+            I'm a vendor
+          </button>
+        </div>
+      </section>
+
+      {/* 6. FOOTER */}
+      <footer className="w-full bg-ink text-cream py-16 px-6 relative z-10">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-10">
+          <div className="col-span-1 md:col-span-1 text-left">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="font-serif text-2xl font-bold text-cream tracking-tight">VendorVision</span>
+              <span className="bg-saffron text-ink px-2 py-0.5 rounded-full text-xs font-bold">AI</span>
+            </div>
+            <p className="text-cream/60 font-medium max-w-xs">
+              A smart footfall prediction system for Chennai's street food vendors and customers.
+            </p>
+          </div>
+          <div className="col-span-1 flex flex-col gap-3 text-left">
+            <span className="text-xs font-bold text-saffron uppercase tracking-widest mb-2">Navigation</span>
+            <a href="#how-it-works" className="text-cream/80 hover:text-saffron transition-colors font-medium w-fit">How it works</a>
+            <a href="#vendors" className="text-cream/80 hover:text-saffron transition-colors font-medium w-fit">For vendors</a>
+            <button onClick={() => setRoute('login')} className="text-cream/80 hover:text-saffron transition-colors font-medium w-fit text-left">Login / Sign up</button>
+          </div>
+          <div className="col-span-1 flex flex-col gap-3 md:text-right text-left">
+            <span className="text-xs font-bold text-saffron uppercase tracking-widest mb-2 md:ms-auto">Built By</span>
+            <p className="text-cream/80 font-medium md:ms-auto">{COURSE_TEAM_NAME}</p>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto border-t border-cream/10 mt-12 pt-8 text-center md:text-left text-sm text-cream/40 font-medium">
+          &copy; {new Date().getFullYear()} VendorVision AI. All rights reserved.
+        </div>
+      </footer>
     </div>
   );
 }
@@ -290,6 +525,7 @@ function AuthPage({ setRoute, setUser, initialError }) {
         body: JSON.stringify({ credential: credentialResponse.credential, role }),
       });
       const data = await res.json();
+        setAllStalls(data);
       if (!res.ok) throw new Error(data.detail || "Google login failed");
       setUser({ ...data.user, token: data.token });
       setRoute(`app-${data.user.role}`);
@@ -323,6 +559,7 @@ function AuthPage({ setRoute, setUser, initialError }) {
         body: JSON.stringify(body),
       });
       const data = await res.json();
+        setAllStalls(data);
       if (!res.ok) throw new Error(data.detail || "Authentication failed");
       
       setUser({ ...data.user, token: data.token });
@@ -339,6 +576,7 @@ function AuthPage({ setRoute, setUser, initialError }) {
       const res = await fetch(`${API_BASE}/auth/demo?role=${demoRole}`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
+        setAllStalls(data);
         setUser({ ...data.user, token: data.token });
         setRoute(`app-${data.user.role}`);
       }
