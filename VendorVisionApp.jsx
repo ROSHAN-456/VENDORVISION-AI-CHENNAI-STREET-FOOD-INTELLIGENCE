@@ -684,9 +684,9 @@ function AuthPage({ setRoute, setUser, initialError }) {
           <div className="mt-8 border-t border-slate-200 pt-6">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 text-center">Demo Logins</p>
             <div className="flex justify-center gap-2">
-              <button type="button" onClick={() => handleDemo('customer')} className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-medium">Customer</button>
-              <button type="button" onClick={() => handleDemo('vendor')} className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-medium">Vendor</button>
-              <button type="button" onClick={() => handleDemo('admin')} className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-medium">Admin</button>
+              <button type="button" onClick={() => handleDemo('customer')} className="text-xs px-4 py-2 bg-leaf text-cream hover:bg-leaf/90 rounded font-bold">Customer</button>
+              <button type="button" onClick={() => handleDemo('vendor')} className="text-xs px-4 py-2 bg-leaf text-cream hover:bg-leaf/90 rounded font-bold">Vendor</button>
+              <button type="button" onClick={() => handleDemo('admin')} className="text-xs px-4 py-2 bg-leaf text-cream hover:bg-leaf/90 rounded font-bold">Admin</button>
             </div>
           </div>
         )}

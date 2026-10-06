@@ -34,7 +34,7 @@ export function Card({ children, className = '' }) {
 export function Button({ children, onClick, variant = 'primary', className = '', ...props }) {
     const base = "inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50 active:scale-95";
     const variants = {
-        primary: "bg-brand-500 text-white hover:bg-brand-600 shadow-sm",
+        primary: "bg-leaf text-cream hover:bg-leaf/90 shadow-sm",
         secondary: "bg-brand-50 text-brand-900 border border-brand-100/60 hover:bg-brand-100",
         outline: "border-2 border-accent text-accent hover:bg-accent/10"
     };

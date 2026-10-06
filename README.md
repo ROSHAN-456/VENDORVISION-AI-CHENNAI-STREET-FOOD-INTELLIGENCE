@@ -41,7 +41,7 @@ The fastest way to run everything:
 Open a terminal and `cd` into the project root (the folder containing `package.json` and the `backend/` folder):
 
 ```bash
-cd "D:\FDS pj (New)\FDS-Project-clean\FDS-Project-clean"
+cd "D:\FDS project PBL\FDS pj (New)\FDS-Project-clean\FDS-Project-clean"
 ```
 
 ### Step 2: Configure Environment Variables
