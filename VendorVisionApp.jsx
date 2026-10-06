@@ -525,7 +525,6 @@ function AuthPage({ setRoute, setUser, initialError }) {
         body: JSON.stringify({ credential: credentialResponse.credential, role }),
       });
       const data = await res.json();
-        setAllStalls(data);
       if (!res.ok) throw new Error(data.detail || "Google login failed");
       setUser({ ...data.user, token: data.token });
       setRoute(`app-${data.user.role}`);
@@ -559,7 +558,6 @@ function AuthPage({ setRoute, setUser, initialError }) {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-        setAllStalls(data);
       if (!res.ok) throw new Error(data.detail || "Authentication failed");
       
       setUser({ ...data.user, token: data.token });
@@ -576,7 +574,6 @@ function AuthPage({ setRoute, setUser, initialError }) {
       const res = await fetch(`${API_BASE}/auth/demo?role=${demoRole}`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        setAllStalls(data);
         setUser({ ...data.user, token: data.token });
         setRoute(`app-${data.user.role}`);
       }
