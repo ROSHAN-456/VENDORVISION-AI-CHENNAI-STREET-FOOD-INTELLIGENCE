@@ -26,8 +26,8 @@ function MapView({ stalls, selectedId, onSelectStall, userLoc, hasLocPermission,
 
         if (!mapRef.current) {
             mapRef.current = window.L.map(containerRef.current).setView([13.0827, 80.2707], 11);
-            window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; CartoDB'
+            window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(mapRef.current);
         }
 

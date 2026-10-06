@@ -1,0 +1,82 @@
+[
+  {
+    "req": {
+      "message": "which stall is least crowded now",
+      "language": "en-IN"
+    },
+    "resp": {
+      "reply": "The least crowded stalls right now are: Adyar Juice & Snacks, Tambaram Chicken 65 Corner, Velachery Kabab Stall.",
+      "intent": "least_crowded"
+    }
+  },
+  {
+    "req": {
+      "message": "wait time at adyar",
+      "language": "en-IN"
+    },
+    "resp": {
+      "reply": "Which stall are you asking about?",
+      "intent": "wait_time"
+    }
+  },
+  {
+    "req": {
+      "message": "best time to visit adyar",
+      "language": "en-IN"
+    },
+    "resp": {
+      "reply": "Which stall are you asking about?",
+      "intent": "wait_time"
+    }
+  },
+  {
+    "req": {
+      "message": "how is the weather",
+      "language": "en-IN"
+    },
+    "resp": {
+      "reply": "The current weather is Clear, so crowd is generally normal.",
+      "intent": "weather"
+    }
+  },
+  {
+    "req": {
+      "message": "how to check-in",
+      "language": "en-IN"
+    },
+    "resp": {
+      "reply": "To check in, click on a stall and select 'Report Crowd' to report the current level.",
+      "intent": "how_to_checkin"
+    }
+  },
+  {
+    "req": {
+      "message": "who are you?",
+      "language": "en-IN"
+    },
+    "resp": {
+      "reply": "I can answer about least crowded stalls, wait times, best time to visit, weather, or how to check-in.",
+      "intent": "unknown"
+    }
+  },
+  {
+    "req": {
+      "message": "கூட்டம் குறைவு",
+      "language": "ta-IN"
+    },
+    "resp": {
+      "reply": "தற்போது கூட்டம் குறைவாக உள்ள கடைகள்: Adyar Juice & Snacks, Tambaram Chicken 65 Corner, Velachery Kabab Stall.",
+      "intent": "least_crowded"
+    }
+  },
+  {
+    "req": {
+      "message": "इंतजार का समय",
+      "language": "hi-IN"
+    },
+    "resp": {
+      "reply": "आप किस स्टॉल के बारे में पूछ रहे हैं?",
+      "intent": "wait_time"
+    }
+  }
+]

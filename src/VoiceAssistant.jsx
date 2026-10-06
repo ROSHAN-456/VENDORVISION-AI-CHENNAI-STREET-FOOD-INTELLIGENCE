@@ -11,6 +11,7 @@ export default function VoiceAssistant({ user }) {
   const [error, setError] = useState('');
   const [lang, setLang] = useState('en-IN');
   const [isSupported, setIsSupported] = useState(true);
+  const [inputText, setInputText] = useState('');
   
   const recognitionRef = useRef(null);
   
@@ -96,7 +97,7 @@ export default function VoiceAssistant({ user }) {
       });
       
       if (!res.ok) {
-        throw new Error(res.status === 404 ? "/chat endpoint not ready yet" : "Chat API Error");
+        throw new Error("Chat API Error: " + res.status);
       }
       
       const data = await res.json();
@@ -109,6 +110,14 @@ export default function VoiceAssistant({ user }) {
       setReply(`Error: ${msg}`);
       speak("Sorry, I am unable to answer right now.");
     }
+  };
+
+  const handleManualSend = (e) => {
+    e.preventDefault();
+    if (!inputText.trim()) return;
+    setTranscript(inputText);
+    sendToAssistant(inputText);
+    setInputText('');
   };
 
   if (!isSupported) {
@@ -175,10 +184,23 @@ export default function VoiceAssistant({ user }) {
             
             {!transcript && !reply && !error && (
               <div className="text-center text-slate-400 text-sm font-medium py-8">
-                Tap the microphone to speak
+                Tap the microphone or type to speak
               </div>
             )}
           </div>
+          
+          <form onSubmit={handleManualSend} className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2">
+            <input 
+              type="text" 
+              value={inputText}
+              onChange={e => setInputText(e.target.value)}
+              placeholder="Ask me anything..." 
+              className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+            />
+            <button type="submit" className="bg-brand-500 text-white p-2 rounded-lg hover:bg-brand-600 transition-colors">
+              <MessageSquare size={18} />
+            </button>
+          </form>
         </div>
       )}
       

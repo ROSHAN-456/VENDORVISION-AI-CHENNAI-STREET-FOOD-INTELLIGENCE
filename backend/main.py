@@ -19,7 +19,7 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -334,6 +334,11 @@ class CheckInRequest(BaseModel):
     stall_id: str
     reported_crowd_level: str
     timestamp: str
+
+class ChatRequest(BaseModel):
+    message: str
+    language: str = "en-IN"
+    stall_id: str = None
 
 # ── Auth models ───────────────────────────────────────────────────────────────
 class GoogleAuthRequest(BaseModel):
@@ -733,6 +738,169 @@ def admin_everything(user: dict = Depends(require_role("admin"))):
         "stalls": stalls_list
     }
 
+
+
+chat_rate_limits = {}
+
+@app.post("/chat")
+def chat_endpoint(req: ChatRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    if client_ip not in chat_rate_limits:
+        chat_rate_limits[client_ip] = []
+    
+    chat_rate_limits[client_ip] = [t for t in chat_rate_limits[client_ip] if now - t < 60]
+    if len(chat_rate_limits[client_ip]) >= 30:
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait a moment.")
+    chat_rate_limits[client_ip].append(now)
+
+    msg = req.message.lower()
+    lang = req.language[:2].lower()
+    
+    # Order matters: best_time before wait_time so "best time" isn't caught by "time"
+    intent_list = [
+        ("least_crowded", ["least crowded", "less crowd", "quietest", "empty", "lowest crowd", "koottam kuraivu", "koottam kuraivana", "kam bheed", "kam bhed", "kam crowd", "குறைந்த கூட்டம்", "கூட்டம் குறைவு", "कम भीड़", "सबसे कम भीड़"]),
+        ("best_time", ["best time", "when to go", "when to visit", "nalla neram", "eppa pogalam", "sahi waqt", "kab jana", "when should i", "சிறந்த நேரம்", "எப்போது செல்லலாம்", "सही समय", "सबसे अच्छा समय"]),
+        ("wait_time", ["wait time", "how long", "wait", "kaathiruppu", "neram", "intizar", "intezar", "காத்திருப்பு", "நேரம்", "इंतजार का समय", "इंतज़ार"]),
+        ("weather", ["weather", "rain", "hot", "climate", "vaanilai", "mausam", "baarish", "garmi", "வானிலை", "மழை", "வெப்பம்", "मौसम", "बारिश", "गर्मी"]),
+        ("how_to_checkin", ["how to check", "checkin", "check-in", "report", "pathivu", "eppadi", "kaise kare", "report kare", "பதிவு செய்வது எப்படி", "எப்படி", "चेक-इन", "कैसे करें"]),
+    ]
+    
+    matched_intent = "unknown"
+    for intent, keywords in intent_list:
+        if any(kw in msg for kw in keywords):
+            matched_intent = intent
+            break
+
+    def find_stall(all_stalls, msg, stall_id_hint):
+        """Match a stall by partial name words (case-insensitive) or explicit stall_id."""
+        if stall_id_hint:
+            for s in all_stalls:
+                if s["id"] == stall_id_hint:
+                    return s
+        # Try exact full name first
+        for s in all_stalls:
+            if s["name"].lower() in msg:
+                return s
+        # Partial: any significant word from the stall name appears in msg
+        for s in all_stalls:
+            words = [w.lower() for w in s["name"].split() if len(w) > 2]
+            if any(w in msg for w in words):
+                return s
+        return None
+            
+    dt = datetime.now()
+    hour = dt.hour
+    day = dt.weekday()
+    
+    lat, lon = 13.0827, 80.2707
+    current_weather_resp = get_weather(lat, lon)
+    current_weather = current_weather_resp.get("weather", "Clear")
+    
+    reply = ""
+    def t(en_str, ta_str, hi_str):
+        if lang == "ta": return ta_str
+        if lang == "hi": return hi_str
+        return en_str
+
+    all_stalls = stalls()
+    
+    if matched_intent == "least_crowded":
+        predictions = []
+        for s in all_stalls:
+            try:
+                _, crowd, wait = predict_crowd(s["id"], hour, day, current_weather)
+                predictions.append((s, wait))
+            except Exception:
+                pass
+        predictions.sort(key=lambda x: x[1])
+        top3 = predictions[:3]
+        names = [p[0]["name"] for p in top3]
+        if lang == "ta":
+            reply = f"தற்போது கூட்டம் குறைவாக உள்ள கடைகள்: {', '.join(names)}."
+        elif lang == "hi":
+            reply = f"अभी सबसे कम भीड़ वाले स्टॉल हैं: {', '.join(names)}."
+        else:
+            reply = f"The least crowded stalls right now are: {', '.join(names)}."
+            
+    elif matched_intent == "wait_time":
+        target_stall = find_stall(all_stalls, msg, req.stall_id)
+        if target_stall:
+            _, crowd, wait = predict_crowd(target_stall["id"], hour, day, current_weather)
+            if lang == "ta":
+                reply = f"{target_stall['name']} கடையில் காத்திருப்பு நேரம் சுமார் {int(wait)} நிமிடங்கள்."
+            elif lang == "hi":
+                reply = f"{target_stall['name']} पर इंतजार का समय लगभग {int(wait)} मिनट है।"
+            else:
+                reply = f"The estimated wait time at {target_stall['name']} is {int(wait)} minutes."
+        else:
+            reply = t("Which stall are you asking about?", "நீங்கள் எந்த கடையை பற்றி கேட்கிறீர்கள்?", "आप किस स्टॉल के बारे में पूछ रहे हैं?")
+            
+    elif matched_intent == "best_time":
+        target_stall = find_stall(all_stalls, msg, req.stall_id)
+        if target_stall:
+            best_hour = hour
+            min_wait = 999
+            for h in range(hour, min(hour+6, 24)):
+                _, crowd, wait = predict_crowd(target_stall["id"], h, day, current_weather)
+                if wait < min_wait:
+                    min_wait = wait
+                    best_hour = h
+            
+            time_str = f"{best_hour}:00"
+            if lang == "ta":
+                reply = f"{target_stall['name']} கடைக்கு செல்ல சிறந்த நேரம் {time_str} மணி."
+            elif lang == "hi":
+                reply = f"{target_stall['name']} जाने का सबसे अच्छा समय {time_str} बजे है।"
+            else:
+                reply = f"The best time to visit {target_stall['name']} in the next 6 hours is at {time_str}."
+        else:
+            reply = t("Which stall are you asking about?", "நீங்கள் எந்த கடையை பற்றி கேட்கிறீர்கள்?", "आप किस स्टॉल के बारे में पूछ रहे हैं?")
+            
+    elif matched_intent == "weather":
+        eff = "crowd is generally normal"
+        if current_weather == "Rain": eff = "crowd might be lower due to rain"
+        if current_weather == "Hot": eff = "afternoon crowds may be lower"
+        
+        if lang == "ta":
+            eff_ta = "கூட்டம் பொதுவாக இருக்கும்" if current_weather == "Clear" else ("மழை காரணமாக கூட்டம் குறைவாக இருக்கலாம்" if current_weather == "Rain" else "வெயில் காரணமாக மதியம் கூட்டம் குறையலாம்")
+            reply = f"தற்போதைய வானிலை: {current_weather}. {eff_ta}."
+        elif lang == "hi":
+            eff_hi = "भीड़ सामान्य है" if current_weather == "Clear" else ("बारिश के कारण भीड़ कम हो सकती है" if current_weather == "Rain" else "गर्मी के कारण दोपहर में भीड़ कम हो सकती है")
+            reply = f"अभी का मौसम {current_weather} है। {eff_hi}।"
+        else:
+            reply = f"The current weather is {current_weather}, so {eff}."
+            
+    elif matched_intent == "how_to_checkin":
+        if lang == "ta":
+            reply = "கூட்டத்தை பதிவு செய்ய, கடையின் மீது கிளிக் செய்து 'Report Crowd' என்பதைத் தேர்ந்தெடுக்கவும்."
+        elif lang == "hi":
+            reply = "भीड़ दर्ज करने के लिए, स्टॉल पर क्लिक करें और 'Report Crowd' चुनें।"
+        else:
+            reply = "To check in, click on a stall and select 'Report Crowd' to report the current level."
+            
+    else:
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        if anthropic_key:
+            try:
+                import anthropic
+                client = anthropic.Anthropic(api_key=anthropic_key)
+                resp = client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=50,
+                    messages=[{"role": "user", "content": f"Answer concisely in {lang}: {msg}"}]
+                )
+                reply = resp.content[0].text
+            except Exception:
+                reply = t("I can answer about least crowded stalls, wait times, best time to visit, weather, or how to check-in.", 
+                          "நான் கூட்டம் குறைவான கடைகள், காத்திருப்பு நேரம், சிறந்த நேரம் மற்றும் வானிலை பற்றி பதிலளிக்க முடியும்.",
+                          "मैं सबसे कम भीड़ वाले स्टॉल, इंतजार का समय, जाने का सबसे अच्छा समय और मौसम के बारे में बता सकता हूँ।")
+        else:
+            reply = t("I can answer about least crowded stalls, wait times, best time to visit, weather, or how to check-in.", 
+                      "நான் கூட்டம் குறைவான கடைகள், காத்திருப்பு நேரம், சிறந்த நேரம் மற்றும் வானிலை பற்றி பதிலளிக்க முடியும்.",
+                      "मैं सबसे कम भीड़ वाले स्टॉल, इंतजार का समय, जाने का सबसे अच्छा समय और मौसम के बारे में बता सकता हूँ।")
+            
+    return {"reply": reply, "intent": matched_intent}
 
 
 # ── Dev entry-point ───────────────────────────────────────────────────────────
